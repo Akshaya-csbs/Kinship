@@ -1,0 +1,200 @@
+import { motion } from "motion/react";
+import { Heart, MessageCircle, Share2, MoreVertical, Play, Sparkles, TrendingUp, Users } from "lucide-react";
+import BottomNav from "../components/BottomNav";
+import GlassCard from "../components/GlassCard";
+import TalentBadge from "../components/TalentBadge";
+import FloatingActionButton from "../components/FloatingActionButton";
+
+const feedPosts = [
+  {
+    id: 1,
+    user: {
+      name: "Maya Rodriguez",
+      avatar: "https://images.unsplash.com/photo-1506863530036-1efeddceb993?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200",
+      talents: ["🎨", "Art"],
+      followers: "12.3k",
+    },
+    type: "image",
+    content: "https://images.unsplash.com/photo-1628586431263-44040b966252?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=1080",
+    caption: "New abstract piece exploring emotion through color. What feelings does this evoke for you?",
+    likes: 1847,
+    comments: 234,
+    time: "2h ago",
+  },
+  {
+    id: 2,
+    user: {
+      name: "Jordan Chen",
+      avatar: "https://images.unsplash.com/photo-1587397845856-e6cf49176c70?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200",
+      talents: ["💃", "Dance"],
+      followers: "28.5k",
+    },
+    type: "video",
+    content: "https://images.unsplash.com/photo-1547153760-18fc86324498?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=1080",
+    caption: "Choreography inspired by urban landscapes. Collaboration with @musicbyalex 🎵",
+    likes: 3254,
+    comments: 467,
+    time: "5h ago",
+    isCollaboration: true,
+  },
+  {
+    id: 3,
+    user: {
+      name: "Alex Morgan",
+      avatar: "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200",
+      talents: ["🎵", "Music"],
+      followers: "45.2k",
+    },
+    type: "image",
+    content: "https://images.unsplash.com/photo-1576967402682-19976eb930f2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=1080",
+    caption: "Live session from last night. The energy was unreal ✨",
+    likes: 5621,
+    comments: 892,
+    time: "1d ago",
+  },
+];
+
+const trendingCollaborations = [
+  { title: "Music Video Project", talents: ["🎬", "🎵"], members: 3 },
+  { title: "Art Exhibition", talents: ["🎨", "📸"], members: 8 },
+];
+
+export default function HomeScreen() {
+  const handleCreatePost = () => {
+    // Future: Open create post modal
+    console.log("Create new post");
+  };
+
+  return (
+    <div className="min-h-screen bg-background pb-24">
+      {/* Header */}
+      <div className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-white/10">
+        <div className="max-w-2xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-10 h-10 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-white" />
+            </div>
+            <h1 className="text-2xl font-bold text-foreground">Kinship</h1>
+          </div>
+          <button className="p-2 hover:bg-secondary rounded-xl transition-colors">
+            <MoreVertical className="w-6 h-6 text-foreground" />
+          </button>
+        </div>
+      </div>
+
+      <div className="max-w-2xl mx-auto px-6 py-6 space-y-6">
+        {/* Trending Collaborations */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingUp className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-semibold text-foreground">Trending Collaborations</h2>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-2 -mx-6 px-6 scrollbar-hide">
+            {trendingCollaborations.map((collab, index) => (
+              <GlassCard
+                key={index}
+                className="flex-shrink-0 w-64 p-4 cursor-pointer hover:border-primary/50 transition-all"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  {collab.talents.map((talent, i) => (
+                    <span key={i} className="text-2xl">{talent}</span>
+                  ))}
+                </div>
+                <h3 className="text-foreground font-medium mb-2">{collab.title}</h3>
+                <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                  <Users className="w-4 h-4" />
+                  <span>{collab.members} creators</span>
+                </div>
+              </GlassCard>
+            ))}
+          </div>
+        </motion.div>
+
+        {/* Feed */}
+        <div className="space-y-6">
+          {feedPosts.map((post, index) => (
+            <motion.div
+              key={post.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.1 }}
+            >
+              <GlassCard className="overflow-hidden">
+                {/* Post header */}
+                <div className="p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={post.user.avatar}
+                      alt={post.user.name}
+                      className="w-12 h-12 rounded-full object-cover ring-2 ring-primary/20"
+                    />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold text-foreground">{post.user.name}</h3>
+                        {post.isCollaboration && (
+                          <span className="px-2 py-0.5 bg-gradient-to-r from-primary to-accent text-white text-xs rounded-full">
+                            Collab
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {post.user.talents.join(" ")} · {post.time}
+                      </p>
+                    </div>
+                  </div>
+                  <button className="p-2 hover:bg-secondary rounded-xl transition-colors">
+                    <MoreVertical className="w-5 h-5 text-muted-foreground" />
+                  </button>
+                </div>
+
+                {/* Post content */}
+                <div className="relative">
+                  <img
+                    src={post.content}
+                    alt=""
+                    className="w-full aspect-square object-cover"
+                  />
+                  {post.type === "video" && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-16 h-16 bg-black/50 backdrop-blur-sm rounded-full flex items-center justify-center">
+                        <Play className="w-8 h-8 text-white ml-1" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Post actions */}
+                <div className="p-4 space-y-3">
+                  <div className="flex items-center gap-4">
+                    <button className="flex items-center gap-2 text-foreground hover:text-primary transition-colors">
+                      <Heart className="w-6 h-6" />
+                      <span className="font-medium">{post.likes.toLocaleString()}</span>
+                    </button>
+                    <button className="flex items-center gap-2 text-foreground hover:text-primary transition-colors">
+                      <MessageCircle className="w-6 h-6" />
+                      <span className="font-medium">{post.comments}</span>
+                    </button>
+                    <button className="flex items-center gap-2 text-foreground hover:text-primary transition-colors ml-auto">
+                      <Share2 className="w-6 h-6" />
+                    </button>
+                  </div>
+
+                  <p className="text-foreground">
+                    <span className="font-semibold">{post.user.name}</span>{" "}
+                    <span className="text-foreground/90">{post.caption}</span>
+                  </p>
+                </div>
+              </GlassCard>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+
+      <BottomNav />
+      <FloatingActionButton onClick={handleCreatePost} />
+    </div>
+  );
+}
