@@ -19,13 +19,13 @@ export default function HomeScreen() {
 
   useEffect(() => {
     const facade = KinshipPlatformFacade.getInstance();
-    setFeedPosts(facade.getFeedPostsJSON());
+    facade.getFeedPostsAsync().then((posts) => setFeedPosts(posts));
   }, []);
 
   const handleCreatePost = () => {
     const facade = KinshipPlatformFacade.getInstance();
     facade.createPost("Collaborating on a new creative project! ✨", "image", "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800");
-    setFeedPosts(facade.getFeedPostsJSON());
+    facade.getFeedPostsAsync().then((posts) => setFeedPosts(posts));
   };
 
   return (

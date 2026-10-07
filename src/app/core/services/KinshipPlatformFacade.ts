@@ -12,8 +12,10 @@ import { GlobalExceptionHandler } from "../exceptions/GlobalExceptionHandler";
 import { EntityNotFoundException, ValidationException, KinshipException } from "../exceptions/KinshipException";
 import { mockCreators, mockPosts, mockOpportunities } from "../../data/mockData";
 
+const JAVA_BACKEND_URL = "http://localhost:8080/api";
+
 /**
- * Singleton Facade - Central entrypoint for Kinship OOP Architecture Engine
+ * Singleton Facade - Central entrypoint for Kinship Java Platform Engine & JDBC Backend Sync
  */
 export class KinshipPlatformFacade {
   private static instance: KinshipPlatformFacade;
@@ -24,6 +26,7 @@ export class KinshipPlatformFacade {
   private matchingEngine: TalentMatchingEngine;
   private threadPool: ThreadPoolExecutor;
   private exceptionHandler: GlobalExceptionHandler;
+  private isJavaBackendLive: boolean = false;
 
   private constructor() {
     this.creatorRepo = new CreatorRepository();
@@ -34,6 +37,7 @@ export class KinshipPlatformFacade {
     this.matchingEngine = new TalentMatchingEngine(this.creatorRepo, this.oppRepo);
 
     this.bootstrapMockData();
+    this.checkJavaBackendStatus();
   }
 
   public static getInstance(): KinshipPlatformFacade {
@@ -43,9 +47,26 @@ export class KinshipPlatformFacade {
     return KinshipPlatformFacade.instance;
   }
 
+  public async checkJavaBackendStatus(): Promise<boolean> {
+    try {
+      const res = await fetch(`${JAVA_BACKEND_URL}/system/oop-metrics`, { signal: AbortSignal.timeout(1500) });
+      if (res.ok) {
+        this.isJavaBackendLive = true;
+        console.log("✅ [Kinship] Live Java JDBC Server detected on port 8080!");
+        return true;
+      }
+    } catch {
+      this.isJavaBackendLive = false;
+    }
+    return false;
+  }
+
+  public isBackendLive(): boolean {
+    return this.isJavaBackendLive;
+  }
+
   private bootstrapMockData(): void {
     try {
-      // Populate CreatorUser objects
       for (const creatorData of mockCreators) {
         const creator = new CreatorUser(
           creatorData.id,
@@ -63,10 +84,8 @@ export class KinshipPlatformFacade {
         this.creatorRepo.save(creator);
       }
 
-      // Populate Posts (Polymorphic instances)
       for (const p of mockPosts) {
         const creator = this.creatorRepo.findById(p.creator.id) || this.creatorRepo.findAll().get(0);
-
         if (p.type === "video") {
           const post = new VideoPost(p.id, creator, p.content, p.media, 45, p.likes, p.comments, p.shares, p.timestamp);
           this.postRepo.save(post);
@@ -79,7 +98,6 @@ export class KinshipPlatformFacade {
         }
       }
 
-      // Populate Opportunities
       for (const o of mockOpportunities) {
         if (o.type === "Event") {
           this.oppRepo.save(new EventOpportunity(o.id, o.title, o.category, o.location, o.date, o.description, o.image, o.applicants));
@@ -94,7 +112,44 @@ export class KinshipPlatformFacade {
     }
   }
 
-  // Repository Accessors
+  public async getFeedPostsAsync(): Promise<any[]> {
+    try {
+      const res = await fetch(`${JAVA_BACKEND_URL}/feed`);
+      if (res.ok) {
+        const data = await res.json();
+        this.isJavaBackendLive = true;
+        return data;
+      }
+    } catch {
+      this.isJavaBackendLive = false;
+    }
+    return this.getFeedPostsJSON();
+  }
+
+  public getFeedPostsJSON(): any[] {
+    return this.postRepo.getTrendingPosts().map((p) => p.toJSON()).toArray();
+  }
+
+  public async getCreatorsAsync(): Promise<any[]> {
+    try {
+      const res = await fetch(`${JAVA_BACKEND_URL}/creators`);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {}
+    return this.creatorRepo.findAll().map((c) => c.toJSON()).toArray();
+  }
+
+  public async getOpportunitiesAsync(): Promise<any[]> {
+    try {
+      const res = await fetch(`${JAVA_BACKEND_URL}/opportunities`);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {}
+    return this.oppRepo.findAll().map((o) => o.toJSON()).toArray();
+  }
+
   public getCreatorRepository(): CreatorRepository {
     return this.creatorRepo;
   }
@@ -115,26 +170,20 @@ export class KinshipPlatformFacade {
     return this.exceptionHandler;
   }
 
-  // Convenience methods returning JSON-serializable structures for React screens
-  public getFeedPostsJSON(): any[] {
-    return this.postRepo.getTrendingPosts().map((p) => p.toJSON()).toArray();
-  }
-
-  public getCreatorsJSON(): any[] {
-    return this.creatorRepo.findAll().map((c) => c.toJSON()).toArray();
-  }
-
-  public getOpportunitiesJSON(): any[] {
-    return this.oppRepo.findAll().map((o) => o.toJSON()).toArray();
-  }
-
   public createPost(content: string, type: "image" | "video" | "collab" = "image", mediaUrl: string): any {
     try {
       if (!content || content.trim().length === 0) {
         throw new ValidationException("Post content cannot be empty", ["Content is required"]);
       }
 
-      const creator = this.creatorRepo.findAll().get(0); // Current logged-in user
+      // Try sending to Java backend
+      fetch(`${JAVA_BACKEND_URL}/feed/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content, type, mediaUrl }),
+      }).catch(() => {});
+
+      const creator = this.creatorRepo.findAll().get(0);
       const id = Date.now();
       let post: any;
 
@@ -148,9 +197,8 @@ export class KinshipPlatformFacade {
 
       this.postRepo.save(post);
 
-      // Async thread task to index post for feed
       this.threadPool.submitTask(`IndexFeedPost-${id}`, async () => {
-        console.log(`[ThreadPool] Feed indexer processed post #${id}`);
+        console.log(`[ThreadPool] Java feed indexer processed post #${id}`);
       }, 3);
 
       return post.toJSON();
@@ -167,7 +215,7 @@ export class KinshipPlatformFacade {
       } else if (type === "VALIDATION") {
         throw new ValidationException("Invalid email address format.", ["Email field missing '@' domain"]);
       } else {
-        throw new KinshipException("Critical system sync operation timed out.", "ERR_SYNC_TIMEOUT");
+        throw new KinshipException("Critical JDBC database query operation timed out.", "ERR_JDBC_TIMEOUT");
       }
     } catch (err: any) {
       this.exceptionHandler.handleException(err);
@@ -177,7 +225,7 @@ export class KinshipPlatformFacade {
   public triggerDemoThreadTask(): void {
     const taskId = Math.floor(Math.random() * 100);
     this.threadPool.submitTask(
-      `TalentMatchingWorker-#${taskId}`,
+      `JavaMatchingWorker-#${taskId}`,
       async () => {
         let count = 0;
         for (let i = 0; i < 5000000; i++) {

@@ -13,6 +13,12 @@ dist-isolation
 .DS_Store
 *.local
 
+# Java Build & Database Artifacts
+bin/
+target/
+*.db
+*.db-journal
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
