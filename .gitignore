@@ -34,3 +34,6 @@ target/
 
 # Local MySQL credentials
 db.properties
+
+# Server log written by the background launcher
+kinship.log

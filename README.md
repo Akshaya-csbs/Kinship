@@ -5,6 +5,19 @@
 
   The React frontend talks to a Java REST backend (`src/main/java`) that stores everything in **MySQL through JDBC**.
 
+  ## Use it any time (one Java server, starts with Windows)
+
+  The Java server also serves the built website, so the whole app runs on **http://localhost:8080**.
+
+  1. Create `db.properties` with your MySQL login (see `db.properties.example`).
+  2. Double-click **`build.bat`** (once, and again after code changes).
+  3. Double-click **`install-autostart.bat`** (once). Kinship now starts hidden every time you log in to Windows
+     (MySQL80 must be set to start automatically, which is the installer default).
+  4. Open **http://localhost:8080** whenever you want to use it.
+
+  `run-kinship.bat` runs it in a window instead, `stop-kinship.bat` stops the background server,
+  `uninstall-autostart.bat` removes the auto-start. The server log is `kinship.log`.
+
   ## Running the app
 
   **Quick start (Windows):** make sure MySQL is running, then double-click `start.bat`.

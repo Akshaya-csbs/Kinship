@@ -11,6 +11,7 @@ import com.kinship.app.controllers.SystemController;
 import com.kinship.app.exceptions.DatabaseException;
 import com.kinship.app.http.ApiServer;
 import com.kinship.app.http.Router;
+import com.kinship.app.http.StaticFileHandler;
 import com.kinship.app.interfaces.Controller;
 import com.kinship.app.mysql.MysqlCollaborationRepository;
 import com.kinship.app.mysql.MysqlDatabaseManager;
@@ -113,10 +114,17 @@ public class KinshipServer {
 
         httpServer = HttpServer.create(new InetSocketAddress(port), 0);
         httpServer.createContext("/api", new ApiServer(router, auth));
+        StaticFileHandler website = new StaticFileHandler(java.nio.file.Path.of(System.getenv().getOrDefault("KINSHIP_WEB_DIR", "dist")));
+        httpServer.createContext("/", website);
         httpServer.setExecutor(httpPool);
         httpServer.start();
 
         System.out.println("=================================================");
+        if (website.isAvailable()) {
+            System.out.println(" Kinship is running:  http://localhost:" + port);
+        } else {
+            System.out.println(" Website not built (no " + website.getRoot() + "). Run 'npm run build' to serve it here.");
+        }
         System.out.println(" Kinship Java backend running on http://localhost:" + port + "/api");
         System.out.println(" " + router.size() + " endpoints, " + HTTP_THREADS + " HTTP worker threads");
         System.out.println(" Health: http://localhost:" + port + "/api/system/health");
