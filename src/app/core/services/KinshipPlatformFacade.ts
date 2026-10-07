@@ -112,6 +112,14 @@ export class KinshipPlatformFacade {
       if (res.status >= 502 && data === null) {
         throw new ApiError(res.status, "Cannot reach the Java backend. Start it with: mvn compile exec:java");
       }
+      if (data?.code === "ERR_NOT_FOUND" && path.startsWith("/")) {
+        // the website is newer than the Java server that is running
+        throw new ApiError(
+          res.status,
+          "The Java server is running an older version. Restart it (run update.bat, or stop and start mvn compile exec:java).",
+          data.code
+        );
+      }
       throw new ApiError(res.status, data?.error ?? `Request failed (${res.status})`, data?.code);
     }
     return data as T;

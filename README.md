@@ -19,6 +19,7 @@
      (MySQL80 must be set to start automatically, which is the installer default).
   4. Open **http://localhost:8080** whenever you want to use it.
 
+  After pulling new code, double-click **`update.bat`** (it pulls, stops the old server, rebuilds and restarts).
   `run-kinship.bat` runs it in a window instead, `stop-kinship.bat` stops the background server,
   `uninstall-autostart.bat` removes the auto-start. The server log is `kinship.log`.
 
