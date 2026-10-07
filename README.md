@@ -5,6 +5,10 @@
 
   The React frontend talks to a Java REST backend (`src/main/java`) that stores everything in **MySQL through JDBC**.
 
+  ## Put it online
+
+  See **[DEPLOY.md](DEPLOY.md)**: deploy the `Dockerfile` to Railway (app + MySQL together) or Render + Aiven (free).
+
   ## Use it any time (one Java server, starts with Windows)
 
   The Java server also serves the built website, so the whole app runs on **http://localhost:8080**.

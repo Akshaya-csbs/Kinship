@@ -143,7 +143,9 @@ public class KinshipServer {
     }
 
     public static void main(String[] args) {
-        int port = Integer.parseInt(System.getenv().getOrDefault("KINSHIP_PORT", "8080"));
+        // hosting platforms (Railway, Render, ...) tell the app which port to use through PORT
+        int port = Integer.parseInt(System.getenv().getOrDefault("PORT",
+                System.getenv().getOrDefault("KINSHIP_PORT", "8080")));
         KinshipServer server = new KinshipServer(port);
         boolean typedCredentials = false;
         for (int attempt = 1; ; attempt++) {
