@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { Search, Send, ArrowLeft, Loader2, PenSquare } from "lucide-react";
+import { Search, Send, ArrowLeft, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
@@ -163,16 +163,7 @@ function Inbox() {
     <div className="min-h-screen bg-background pb-24">
       <div className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-white/10">
         <div className="max-w-2xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-2xl font-bold text-foreground">Messages</h1>
-            <button
-              onClick={() => navigate("/explore")}
-              className="p-2 hover:bg-secondary rounded-xl"
-              aria-label="Find creators to message"
-            >
-              <PenSquare className="w-5 h-5 text-primary" />
-            </button>
-          </div>
+          <h1 className="text-2xl font-bold text-foreground mb-4">Messages</h1>
 
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />

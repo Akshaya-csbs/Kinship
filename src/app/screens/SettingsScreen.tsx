@@ -11,7 +11,6 @@ import {
   Shield,
   Moon,
   Sun,
-  Cpu,
   FileText,
 } from "lucide-react";
 import { ReactNode, useEffect, useState } from "react";
@@ -91,7 +90,7 @@ export default function SettingsScreen() {
       title: "Preferences",
       items: [
         { icon: Bell, label: "Notifications", badge: unread > 0 ? String(unread) : undefined, action: () => navigate("/notifications") },
-        { icon: Globe, label: `Language & Region (${language})`, action: () => setDialog("language") },
+        { icon: Globe, label: "Language & Region", action: () => setDialog("language") },
         { icon: Palette, label: "Appearance", hasToggle: true, action: toggleTheme },
       ],
     },
@@ -101,7 +100,6 @@ export default function SettingsScreen() {
         { icon: HelpCircle, label: "Help Center", action: () => setDialog("help") },
         { icon: FileText, label: "Terms of Service", action: () => setDialog("terms") },
         { icon: Shield, label: "Privacy Policy", action: () => setDialog("policy") },
-        { icon: Cpu, label: "Java Backend Status", action: () => navigate("/system") },
       ],
     },
   ];

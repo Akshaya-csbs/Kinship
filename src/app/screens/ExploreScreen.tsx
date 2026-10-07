@@ -49,7 +49,7 @@ export default function ExploreScreen() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.getTalentStats().then((stats) => setCategories(Object.entries(stats).slice(0, 6))).catch(() => undefined);
+    api.getTalentStats().then((stats) => setCategories(Object.entries(stats).slice(0, 3))).catch(() => undefined);
     api.getRecommendedCreators().then(setRecommended).catch(() => undefined);
   }, []);
 
@@ -86,11 +86,11 @@ export default function ExploreScreen() {
     }
   };
 
-  const followButton = (creator: any, small = false) =>
+  const followButton = (creator: any) =>
     creator.isMe ? null : (
       <button
         onClick={(e) => toggleFollow(creator, e)}
-        className={`${small ? "px-3 py-1 text-xs" : "px-4 py-1.5 text-sm"} rounded-lg font-medium transition-colors ${
+        className={`px-4 py-1.5 text-sm rounded-lg font-medium transition-colors ${
           creator.isFollowing ? "bg-secondary text-foreground hover:bg-secondary/80" : "bg-primary text-white hover:bg-primary/90"
         }`}
       >
@@ -121,7 +121,7 @@ export default function ExploreScreen() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search creators, talents, cities..."
+              placeholder="Search creators, talents, projects..."
               className="w-full bg-secondary/50 border border-white/10 rounded-xl pl-11 pr-10 py-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             />
             {query && (
@@ -200,26 +200,31 @@ export default function ExploreScreen() {
               >
                 <GlassCard
                   onClick={() => navigate(`/profile/${creator.id}`)}
-                  className="p-4 cursor-pointer hover:border-primary/50 transition-all"
+                  className="overflow-hidden cursor-pointer hover:border-primary/50 transition-all"
                 >
-                  <div className="flex items-center gap-4">
-                    <img
-                      src={creator.image}
-                      alt={creator.name}
-                      className="w-16 h-16 rounded-2xl object-cover ring-2 ring-primary/20"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1">
-                        <h3 className="font-semibold text-foreground truncate">{creator.name}</h3>
-                        {creator.verified && <Sparkles className="w-3 h-3 text-primary flex-shrink-0" />}
+                  <div className="flex gap-4">
+                    <img src={creator.featuredWork || creator.image} alt="" className="w-32 h-32 object-cover" />
+                    <div className="flex-1 p-4 flex flex-col justify-between min-w-0">
+                      <div>
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <img
+                              src={creator.image}
+                              alt={creator.name}
+                              className="w-12 h-12 rounded-full object-cover ring-2 ring-primary/20"
+                            />
+                            <div className="min-w-0">
+                              <h3 className="font-semibold text-foreground truncate">{creator.name}</h3>
+                              <p className="text-sm text-muted-foreground truncate">{creator.talents.join(" · ")}</p>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-sm text-muted-foreground truncate">{creator.talents.join(" · ")}</p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                        <MapPin className="w-3 h-3" />
-                        {creator.location} · {formatCount(creator.followers)} followers
-                      </p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">{formatCount(creator.followers)} followers</span>
+                        {followButton(creator)}
+                      </div>
                     </div>
-                    {followButton(creator)}
                   </div>
                 </GlassCard>
               </motion.div>
@@ -227,12 +232,12 @@ export default function ExploreScreen() {
           </div>
         </motion.div>
 
-        {/* Recommended (talent matching runs in parallel threads on the server) */}
+        {/* Nearby Creators (ranked on the server by parallel talent/location matching) */}
         {recommended.length > 0 && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
             <div className="flex items-center gap-2 mb-4">
               <MapPin className="w-5 h-5 text-primary" />
-              <h2 className="text-lg font-semibold text-foreground">Recommended for You</h2>
+              <h2 className="text-lg font-semibold text-foreground">Nearby Creators</h2>
             </div>
             <div className="flex gap-4 overflow-x-auto pb-2 -mx-6 px-6 scrollbar-hide">
               {recommended.map((creator) => (
@@ -247,11 +252,11 @@ export default function ExploreScreen() {
                     className="w-24 h-24 rounded-2xl object-cover mx-auto mb-3 ring-2 ring-primary/20"
                   />
                   <h3 className="font-semibold text-foreground text-center mb-1 text-sm truncate">{creator.name}</h3>
-                  <p className="text-xs text-muted-foreground text-center mb-1 truncate">{creator.talents.join(" · ")}</p>
-                  <p className="text-xs text-primary text-center mb-2">
-                    {creator.matchScore}% · {creator.matchReason}
-                  </p>
-                  <div className="flex justify-center">{followButton(creator, true)}</div>
+                  <p className="text-xs text-muted-foreground text-center mb-2 truncate">{creator.talents.join(" · ")}</p>
+                  <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
+                    <MapPin className="w-3 h-3" />
+                    <span className="truncate">{creator.location}</span>
+                  </div>
                 </GlassCard>
               ))}
             </div>

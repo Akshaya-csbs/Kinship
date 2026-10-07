@@ -299,11 +299,6 @@ export function CreatorProfileScreen() {
                   {talent}
                 </Badge>
               ))}
-              {isMe && (
-                <button onClick={() => navigate("/talents")} className="text-xs text-primary underline-offset-2 hover:underline">
-                  {creator.talents.length ? "Edit talents" : "Add talents"}
-                </button>
-              )}
             </div>
 
             {/* Achievements */}
@@ -371,14 +366,6 @@ export function CreatorProfileScreen() {
                     >
                       <Users className="w-4 h-4 mr-2" />
                       {creator.isFollowing ? "Following" : "Follow"}
-                    </Button>
-                    <Button
-                      onClick={() => navigate(`/messages/${creator.id}`)}
-                      variant="outline"
-                      className="h-11 px-4 rounded-2xl border-border hover:bg-accent"
-                      aria-label="Message"
-                    >
-                      <MessageCircle className="w-4 h-4" />
                     </Button>
                   </>
                 )}

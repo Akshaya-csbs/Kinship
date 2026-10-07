@@ -10,7 +10,6 @@ import {
   Briefcase,
   Cpu,
   LogOut,
-  RefreshCw,
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -32,7 +31,6 @@ import { api, errorMessage } from "../core/services/KinshipPlatformFacade";
 const trendingCollaborations = [
   { title: "Music Video Project", talents: ["🎬", "🎵"], members: 3 },
   { title: "Art Exhibition", talents: ["🎨", "📸"], members: 8 },
-  { title: "Dance Film", talents: ["💃", "🎥"], members: 4 },
 ];
 
 export default function HomeScreen() {
@@ -81,13 +79,6 @@ export default function HomeScreen() {
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={loadFeed}
-              className="p-2 hover:bg-secondary rounded-xl transition-colors"
-              aria-label="Refresh feed"
-            >
-              <RefreshCw className={`w-5 h-5 text-foreground ${loading ? "animate-spin" : ""}`} />
-            </button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="p-2 hover:bg-secondary rounded-xl transition-colors" aria-label="Menu">
@@ -95,6 +86,9 @@ export default function HomeScreen() {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={loadFeed}>
+                  <Sparkles className="w-4 h-4" /> Refresh feed
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate("/opportunities")}>
                   <Briefcase className="w-4 h-4" /> Opportunities
                 </DropdownMenuItem>
@@ -120,17 +114,9 @@ export default function HomeScreen() {
       <div className="max-w-2xl mx-auto px-6 py-6 space-y-6">
         {/* Trending Collaborations */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-primary" />
-              <h2 className="text-lg font-semibold text-foreground">Trending Collaborations</h2>
-            </div>
-            <button
-              onClick={() => navigate("/opportunities")}
-              className="text-sm text-primary hover:text-primary/80 transition-colors"
-            >
-              Opportunities
-            </button>
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingUp className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-semibold text-foreground">Trending Collaborations</h2>
           </div>
           <div className="flex gap-3 overflow-x-auto pb-2 -mx-6 px-6 scrollbar-hide">
             {trendingCollaborations.map((collab, index) => (

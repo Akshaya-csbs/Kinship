@@ -8,14 +8,10 @@ import {
   Flame,
   Award,
   Briefcase,
-  GraduationCap,
-  PartyPopper,
   CheckCircle2,
   Loader2,
-  ArrowLeft,
 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import BottomNav from "../components/BottomNav";
 import GlassCard from "../components/GlassCard";
@@ -25,14 +21,11 @@ import { api, errorMessage } from "../core/services/KinshipPlatformFacade";
 const categories = [
   { icon: Briefcase, label: "All", value: "All" },
   { icon: Flame, label: "Gigs", value: "Gig" },
-  { icon: PartyPopper, label: "Events", value: "Event" },
   { icon: Users, label: "Collabs", value: "Collab" },
   { icon: Award, label: "Competitions", value: "Competition" },
-  { icon: GraduationCap, label: "Workshops", value: "Workshop" },
 ];
 
 export default function OpportunitiesScreen() {
-  const navigate = useNavigate();
   const [category, setCategory] = useState("All");
   const [opportunities, setOpportunities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,15 +65,10 @@ export default function OpportunitiesScreen() {
       {/* Header */}
       <div className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-white/10">
         <div className="max-w-2xl mx-auto px-6 py-4">
-          <div className="flex items-center gap-2 mb-4">
-            <button onClick={() => navigate(-1)} className="p-2 -ml-2 hover:bg-secondary rounded-xl" aria-label="Back">
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <Sparkles className="w-6 h-6 text-primary" />
-              Opportunities
-            </h1>
-          </div>
+          <h1 className="text-2xl font-bold text-foreground mb-4 flex items-center gap-2">
+            <Sparkles className="w-6 h-6 text-primary" />
+            Opportunities
+          </h1>
 
           {/* Category filters */}
           <div className="flex gap-2 overflow-x-auto pb-2 -mx-6 px-6 scrollbar-hide">

@@ -58,12 +58,21 @@ public class CreatorController extends BaseController {
         return json;
     }
 
+    /** Adds each creator's latest post image as "featuredWork" (falls back to the avatar). */
+    private List<Map<String, Object>> withFeaturedWork(List<Map<String, Object>> creators) throws KinshipException {
+        Map<Long, String> media = posts.findLatestMediaByCreator();
+        for (Map<String, Object> json : creators) {
+            json.put("featuredWork", media.getOrDefault((Long) json.get("id"), (String) json.get("image")));
+        }
+        return creators;
+    }
+
     private Object search(ApiRequest req) throws KinshipException {
         List<Map<String, Object>> result = new ArrayList<>();
         for (CreatorUser user : users.search(req.query("q"), req.query("talent"))) {
             result.add(withFollowState(user, req.viewerId()));
         }
-        return result;
+        return withFeaturedWork(result);
     }
 
     /** Uses the list computed by the background scheduler thread. */
@@ -77,7 +86,7 @@ public class CreatorController extends BaseController {
                 result.add(withFollowState(user, req.viewerId()));
             }
         }
-        return result;
+        return withFeaturedWork(result);
     }
 
     private Object recommended(ApiRequest req) throws KinshipException {

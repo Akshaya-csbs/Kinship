@@ -139,6 +139,7 @@ public class MysqlPostRepository extends BaseMysqlRepository implements IReposit
     /** Likes or unlikes the post atomically (transaction) and returns the new state. */
     public LikeResult toggleLike(long userId, long postId) throws DatabaseException {
         return db.inTransaction("Toggle like", conn -> {
+            lockPost(conn, postId); // serialises concurrent likes on the same post
             boolean liked;
             try (PreparedStatement del = conn.prepareStatement("DELETE FROM post_likes WHERE user_id = ? AND post_id = ?")) {
                 del.setLong(1, userId);
@@ -171,6 +172,7 @@ public class MysqlPostRepository extends BaseMysqlRepository implements IReposit
 
     public int incrementShares(long postId) throws DatabaseException {
         return db.inTransaction("Share post", conn -> {
+            lockPost(conn, postId);
             try (PreparedStatement ps = conn.prepareStatement("UPDATE posts SET shares = shares + 1 WHERE id = ?")) {
                 ps.setLong(1, postId);
                 ps.executeUpdate();
@@ -181,6 +183,7 @@ public class MysqlPostRepository extends BaseMysqlRepository implements IReposit
 
     public Comment addComment(long postId, long userId, String content) throws DatabaseException {
         long commentId = db.inTransaction("Add comment", conn -> {
+            lockPost(conn, postId);
             long id;
             try (PreparedStatement ins = conn.prepareStatement(
                     "INSERT INTO comments (post_id, user_id, content, created_at) VALUES (?, ?, ?, ?)",
@@ -221,6 +224,29 @@ public class MysqlPostRepository extends BaseMysqlRepository implements IReposit
                 return comments;
             }
         });
+    }
+
+    /** Media URL of each creator's most recent post (creator id -> url), used as their featured work. */
+    public java.util.Map<Long, String> findLatestMediaByCreator() throws DatabaseException {
+        String sql = "SELECT p.creator_id, p.media_url FROM posts p JOIN (SELECT creator_id, MAX(id) AS last_id FROM posts "
+                + "WHERE media_url IS NOT NULL GROUP BY creator_id) latest ON latest.last_id = p.id";
+        return db.execute("Load featured work", conn -> {
+            java.util.Map<Long, String> media = new java.util.HashMap<>();
+            try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery(sql)) {
+                while (rs.next()) {
+                    media.put(rs.getLong(1), rs.getString(2));
+                }
+            }
+            return media;
+        });
+    }
+
+    /** SELECT ... FOR UPDATE: takes the row lock up front so every transaction locks in the same order. */
+    private static void lockPost(java.sql.Connection conn, long postId) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT id FROM posts WHERE id = ? FOR UPDATE")) {
+            ps.setLong(1, postId);
+            ps.executeQuery().close();
+        }
     }
 
     private static int readCounter(java.sql.Connection conn, String column, long postId) throws SQLException {

@@ -73,8 +73,38 @@ public final class MysqlDatabaseManager {
         }
     }
 
-    /** Runs work inside one transaction: commit on success, rollback on any failure. */
+    /**
+     * Runs work inside one transaction: commit on success, rollback on any failure.
+     * If MySQL aborts the transaction because of a deadlock between concurrent requests,
+     * it is retried (up to {@value #MAX_DEADLOCK_RETRIES} times) before giving up.
+     */
     public <R> R inTransaction(String operation, SqlFunction<R> work) throws DatabaseException {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return runTransaction(operation, work);
+            } catch (DatabaseException e) {
+                if (attempt >= MAX_DEADLOCK_RETRIES || !isDeadlock(e.getCause())) {
+                    throw e;
+                }
+                try {
+                    Thread.sleep(10L * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+            }
+        }
+    }
+
+    private static final int MAX_DEADLOCK_RETRIES = 3;
+
+    /** SQLState 40001 / MySQL error 1213 (deadlock) and 1205 (lock wait timeout). */
+    private static boolean isDeadlock(Throwable t) {
+        return t instanceof SQLException sql
+                && ("40001".equals(sql.getSQLState()) || sql.getErrorCode() == 1213 || sql.getErrorCode() == 1205);
+    }
+
+    private <R> R runTransaction(String operation, SqlFunction<R> work) throws DatabaseException {
         try (Connection conn = getConnection()) {
             conn.setAutoCommit(false);
             try {

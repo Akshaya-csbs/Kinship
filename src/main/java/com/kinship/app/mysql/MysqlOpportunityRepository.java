@@ -135,6 +135,10 @@ public class MysqlOpportunityRepository extends BaseMysqlRepository implements I
      */
     public ApplyResult apply(long userId, long opportunityId) throws DatabaseException {
         return db.inTransaction("Apply to opportunity", conn -> {
+            try (PreparedStatement lock = conn.prepareStatement("SELECT id FROM opportunities WHERE id = ? FOR UPDATE")) {
+                lock.setLong(1, opportunityId);
+                lock.executeQuery().close();
+            }
             boolean inserted;
             try (PreparedStatement ins = conn.prepareStatement(
                     "INSERT INTO applications (user_id, opportunity_id, created_at) VALUES (?, ?, ?)")) {

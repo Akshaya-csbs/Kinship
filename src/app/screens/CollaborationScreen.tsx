@@ -1,10 +1,9 @@
 import { motion } from "motion/react";
-import { Users, Plus, Search, Clock, CheckCircle2, XCircle, ArrowLeft, Loader2 } from "lucide-react";
+import { Users, Plus, Search, Clock, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import GlassCard from "../components/GlassCard";
-import BottomNav from "../components/BottomNav";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { api, errorMessage } from "../core/services/KinshipPlatformFacade";
 
@@ -221,12 +220,9 @@ export default function CollaborationScreen() {
   );
 
   return (
-    <div className="min-h-screen bg-background p-6 pb-24">
+    <div className="min-h-screen bg-background p-6">
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-6 max-w-2xl mx-auto">
-        <button onClick={() => navigate(-1)} className="p-2 -ml-2 mb-2 hover:bg-secondary rounded-xl" aria-label="Back">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
         <h1 className="text-3xl font-bold text-foreground mb-2 flex items-center gap-2">
           <Users className="w-8 h-8 text-primary" />
           Collaborations
@@ -394,7 +390,6 @@ export default function CollaborationScreen() {
         onClose={() => setOpenProject(null)}
         onProgress={(id, progress) => setActive((list) => list.map((c) => (c.id === id ? { ...c, progress } : c)))}
       />
-      <BottomNav />
     </div>
   );
 }

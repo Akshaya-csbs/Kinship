@@ -258,6 +258,13 @@ public class MysqlUserRepository extends BaseMysqlRepository implements IReposit
     /** Follows or unfollows in a single transaction and keeps both counters consistent. */
     public FollowResult toggleFollow(long followerId, long followedId) throws DatabaseException {
         return db.inTransaction("Toggle follow", conn -> {
+            // lock both user rows in id order so concurrent follows cannot deadlock
+            try (PreparedStatement lock = conn.prepareStatement(
+                    "SELECT id FROM users WHERE id IN (?, ?) ORDER BY id FOR UPDATE")) {
+                lock.setLong(1, followerId);
+                lock.setLong(2, followedId);
+                lock.executeQuery().close();
+            }
             boolean nowFollowing;
             try (PreparedStatement del = conn.prepareStatement(
                     "DELETE FROM follows WHERE follower_id = ? AND followed_id = ?")) {
