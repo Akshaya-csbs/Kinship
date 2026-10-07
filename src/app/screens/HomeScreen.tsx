@@ -1,58 +1,12 @@
+import { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { Heart, MessageCircle, Share2, MoreVertical, Play, Sparkles, TrendingUp, Users } from "lucide-react";
+import { Heart, MessageCircle, Share2, MoreVertical, Play, Sparkles, TrendingUp, Users, Cpu } from "lucide-react";
 import BottomNav from "../components/BottomNav";
 import GlassCard from "../components/GlassCard";
 import TalentBadge from "../components/TalentBadge";
 import FloatingActionButton from "../components/FloatingActionButton";
-
-const feedPosts = [
-  {
-    id: 1,
-    user: {
-      name: "Maya Rodriguez",
-      avatar: "https://images.unsplash.com/photo-1506863530036-1efeddceb993?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200",
-      talents: ["🎨", "Art"],
-      followers: "12.3k",
-    },
-    type: "image",
-    content: "https://images.unsplash.com/photo-1628586431263-44040b966252?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=1080",
-    caption: "New abstract piece exploring emotion through color. What feelings does this evoke for you?",
-    likes: 1847,
-    comments: 234,
-    time: "2h ago",
-  },
-  {
-    id: 2,
-    user: {
-      name: "Jordan Chen",
-      avatar: "https://images.unsplash.com/photo-1587397845856-e6cf49176c70?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200",
-      talents: ["💃", "Dance"],
-      followers: "28.5k",
-    },
-    type: "video",
-    content: "https://images.unsplash.com/photo-1547153760-18fc86324498?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=1080",
-    caption: "Choreography inspired by urban landscapes. Collaboration with @musicbyalex 🎵",
-    likes: 3254,
-    comments: 467,
-    time: "5h ago",
-    isCollaboration: true,
-  },
-  {
-    id: 3,
-    user: {
-      name: "Alex Morgan",
-      avatar: "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200",
-      talents: ["🎵", "Music"],
-      followers: "45.2k",
-    },
-    type: "image",
-    content: "https://images.unsplash.com/photo-1576967402682-19976eb930f2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=1080",
-    caption: "Live session from last night. The energy was unreal ✨",
-    likes: 5621,
-    comments: 892,
-    time: "1d ago",
-  },
-];
+import JavaOopInspectorModal from "../components/JavaOopInspectorModal";
+import { KinshipPlatformFacade } from "../core/services/KinshipPlatformFacade";
 
 const trendingCollaborations = [
   { title: "Music Video Project", talents: ["🎬", "🎵"], members: 3 },
@@ -60,9 +14,18 @@ const trendingCollaborations = [
 ];
 
 export default function HomeScreen() {
+  const [feedPosts, setFeedPosts] = useState<any[]>([]);
+  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+
+  useEffect(() => {
+    const facade = KinshipPlatformFacade.getInstance();
+    setFeedPosts(facade.getFeedPostsJSON());
+  }, []);
+
   const handleCreatePost = () => {
-    // Future: Open create post modal
-    console.log("Create new post");
+    const facade = KinshipPlatformFacade.getInstance();
+    facade.createPost("Collaborating on a new creative project! ✨", "image", "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800");
+    setFeedPosts(facade.getFeedPostsJSON());
   };
 
   return (
@@ -76,9 +39,19 @@ export default function HomeScreen() {
             </div>
             <h1 className="text-2xl font-bold text-foreground">Kinship</h1>
           </div>
-          <button className="p-2 hover:bg-secondary rounded-xl transition-colors">
-            <MoreVertical className="w-6 h-6 text-foreground" />
-          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsInspectorOpen(true)}
+              className="px-3 py-1.5 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-400 border border-amber-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
+            >
+              <Cpu className="w-3.5 h-3.5 text-amber-400" />
+              <span>Java OOP Engine</span>
+            </button>
+            <button className="p-2 hover:bg-secondary rounded-xl transition-colors">
+              <MoreVertical className="w-6 h-6 text-foreground" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -134,14 +107,14 @@ export default function HomeScreen() {
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold text-foreground">{post.user.name}</h3>
-                        {post.isCollaboration && (
+                        {post.badge && (
                           <span className="px-2 py-0.5 bg-gradient-to-r from-primary to-accent text-white text-xs rounded-full">
-                            Collab
+                            {post.badge}
                           </span>
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        {post.user.talents.join(" ")} · {post.time}
+                        {Array.isArray(post.user.talents) ? post.user.talents.join(" ") : post.user.talents} · {post.time}
                       </p>
                     </div>
                   </div>
@@ -195,6 +168,7 @@ export default function HomeScreen() {
 
       <BottomNav />
       <FloatingActionButton onClick={handleCreatePost} />
+      <JavaOopInspectorModal isOpen={isInspectorOpen} onClose={() => setIsInspectorOpen(false)} />
     </div>
   );
-}
+}
