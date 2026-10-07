@@ -42,10 +42,56 @@ public final class DatabaseConfig {
                 System.err.println("[DatabaseConfig] Could not read db.properties: " + e.getMessage());
             }
         }
+        if (System.getenv("KINSHIP_DB_URL") == null) {
+            DatabaseConfig cloud = fromCloudVariables();
+            if (cloud != null) {
+                return cloud;
+            }
+        }
         return new DatabaseConfig(
                 pick("KINSHIP_DB_URL", file.getProperty("db.url"), DEFAULT_URL),
                 pick("KINSHIP_DB_USER", file.getProperty("db.user"), "root"),
                 pick("KINSHIP_DB_PASSWORD", file.getProperty("db.password"), ""));
+    }
+
+    private static final String URL_OPTIONS =
+            "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8";
+
+    /**
+     * Hosting platforms describe their MySQL database either as one URL
+     * (MYSQL_URL / DATABASE_URL = mysql://user:password@host:port/database) or as separate
+     * MYSQLHOST, MYSQLPORT, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE variables (Railway).
+     */
+    private static DatabaseConfig fromCloudVariables() {
+        for (String name : new String[]{"MYSQL_URL", "DATABASE_URL"}) {
+            String value = System.getenv(name);
+            if (value != null && value.startsWith("mysql://")) {
+                try {
+                    java.net.URI uri = java.net.URI.create(value);
+                    String[] login = uri.getRawUserInfo() == null ? new String[]{"root", ""}
+                            : uri.getRawUserInfo().split(":", 2);
+                    String user = java.net.URLDecoder.decode(login[0], java.nio.charset.StandardCharsets.UTF_8);
+                    String password = login.length > 1
+                            ? java.net.URLDecoder.decode(login[1], java.nio.charset.StandardCharsets.UTF_8) : "";
+                    int port = uri.getPort() > 0 ? uri.getPort() : 3306;
+                    String database = uri.getPath() == null || uri.getPath().length() <= 1 ? "kinshipdb" : uri.getPath().substring(1);
+                    System.out.println("[DatabaseConfig] Using MySQL from " + name + " (" + uri.getHost() + ":" + port + ")");
+                    return new DatabaseConfig("jdbc:mysql://" + uri.getHost() + ":" + port + "/" + database
+                            + URL_OPTIONS + "&createDatabaseIfNotExist=true", user, password);
+                } catch (IllegalArgumentException e) {
+                    System.err.println("[DatabaseConfig] " + name + " is not a valid mysql:// URL: " + e.getMessage());
+                }
+            }
+        }
+        String host = System.getenv("MYSQLHOST");
+        if (host != null && !host.isEmpty()) {
+            String port = System.getenv().getOrDefault("MYSQLPORT", "3306");
+            String database = System.getenv().getOrDefault("MYSQLDATABASE", "kinshipdb");
+            System.out.println("[DatabaseConfig] Using MySQL from MYSQLHOST (" + host + ":" + port + ")");
+            return new DatabaseConfig("jdbc:mysql://" + host + ":" + port + "/" + database + URL_OPTIONS,
+                    System.getenv().getOrDefault("MYSQLUSER", "root"), System.getenv().getOrDefault("MYSQLPASSWORD", ""));
+        }
+        return null;
     }
 
     private static String pick(String envName, String fileValue, String fallback) {

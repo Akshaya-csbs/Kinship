@@ -52,6 +52,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class KinshipServer {
     private static final int HTTP_THREADS = 10;
+    /** How many times to try reaching MySQL at start-up (5 seconds apart) before giving up. */
+    private static final int DB_WAIT_ATTEMPTS = 25;
 
     private final int port;
     private HttpServer httpServer;
@@ -163,9 +165,25 @@ public class KinshipServer {
                     typedCredentials = true;
                     continue; // retry with the credentials the user just typed
                 }
+                if (!isAccessDenied(e) && attempt < DB_WAIT_ATTEMPTS) {
+                    // the database may still be starting (e.g. right after a cloud deploy or Windows boot)
+                    System.err.println("Waiting for MySQL... retry " + attempt + "/" + (DB_WAIT_ATTEMPTS - 1)
+                            + " in 5 seconds");
+                    try {
+                        Thread.sleep(5000);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        System.exit(1);
+                    }
+                    continue;
+                }
                 if (!isAccessDenied(e)) {
                     System.err.println("Fix: make sure the MySQL server is running "
                             + "(Windows: open 'Services' and start 'MySQL80').");
+                    if (System.getenv("PORT") != null) {
+                        System.err.println("Online: add a MySQL database and set MYSQL_URL "
+                                + "(Railway: MYSQL_URL=${{MySQL.MYSQL_URL}}). See DEPLOY.md.");
+                    }
                 }
                 server.stop();
                 System.exit(1);

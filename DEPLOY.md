@@ -10,6 +10,9 @@ MySQL with three environment variables:
 | `KINSHIP_DB_USER` | `root` |
 | `KINSHIP_DB_PASSWORD` | your database password |
 
+Instead of the three `KINSHIP_DB_*` variables you can set one `MYSQL_URL=mysql://user:password@host:port/database`
+(Railway provides this). If the database is still starting, the server retries for about 2 minutes.
+
 Tables and demo data are created automatically on the first start.
 
 ---
@@ -22,13 +25,12 @@ Railway gives new accounts trial credit; after that the Hobby plan is about $5/m
 2. **New Project → Deploy from GitHub repo →** pick `Akshaya-csbs/Kinship`.
    Railway finds the `Dockerfile` and starts building (5–10 minutes the first time).
 3. In the same project click **+ Create → Database → MySQL**. Wait until it is running.
-4. Click your **Kinship** service → **Variables** tab → **Raw Editor**, paste this and click **Update Variables**:
+4. Click your **Kinship** service → **Variables** tab → **New Variable**, and add exactly one variable:
    ```
-   KINSHIP_DB_URL=jdbc:mysql://${{MySQL.MYSQLHOST}}:${{MySQL.MYSQLPORT}}/${{MySQL.MYSQLDATABASE}}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8
-   KINSHIP_DB_USER=${{MySQL.MYSQLUSER}}
-   KINSHIP_DB_PASSWORD=${{MySQL.MYSQLPASSWORD}}
+   MYSQL_URL=${{MySQL.MYSQL_URL}}
    ```
-   (If your database service is not called `MySQL`, replace `MySQL` with its name.)
+   (If your database service is not called `MySQL`, replace `MySQL` with its name.) Railway redeploys automatically.
+   The server reads the host, port, user, password and database from that single value.
 5. Kinship service → **Settings → Networking → Generate Domain**.
    You get a link like `https://kinship-production-xxxx.up.railway.app`.
 6. Open the link. Check `https://YOUR-LINK/api/system/health` shows `"database":"CONNECTED"`.
