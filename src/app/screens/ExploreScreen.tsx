@@ -1,69 +1,29 @@
 import { motion } from "motion/react";
 import { Search, MapPin, TrendingUp, Sparkles, Music, Palette, Camera, Utensils, Dumbbell, Film } from "lucide-react";
+import { useState, useEffect } from "react";
 import BottomNav from "../components/BottomNav";
 import GlassCard from "../components/GlassCard";
+import { KinshipPlatformFacade } from "../core/services/KinshipPlatformFacade";
 
 const categories = [
   { icon: Music, label: "Music", color: "from-pink-500 to-rose-500", count: "15.2k" },
   { icon: Palette, label: "Art", color: "from-blue-500 to-cyan-500", count: "12.8k" },
-  { icon: Camera, label: "Photography", color: "from-orange-500 to-yellow-500", count: "18.5k" },
-  { icon: Film, label: "Film", color: "from-violet-500 to-purple-500", count: "9.3k" },
-  { icon: Utensils, label: "Cooking", color: "from-red-500 to-orange-500", count: "7.1k" },
   { icon: Dumbbell, label: "Fitness", color: "from-green-500 to-emerald-500", count: "11.2k" },
 ];
 
-const trendingCreators = [
-  {
-    id: 1,
-    name: "Sarah Kim",
-    talent: "🎨 Visual Artist",
-    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300",
-    followers: "34.2k",
-    featuredWork: "https://images.unsplash.com/photo-1613667013398-0ab87d27641b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=600",
-  },
-  {
-    id: 2,
-    name: "David Torres",
-    talent: "🎵 Producer",
-    avatar: "https://images.unsplash.com/photo-1618673747378-7e0d3561371a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300",
-    followers: "28.7k",
-    featuredWork: "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=600",
-  },
-  {
-    id: 3,
-    name: "Emma Zhang",
-    talent: "📸 Photographer",
-    avatar: "https://images.unsplash.com/photo-1660092626225-f291ab2970b9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300",
-    followers: "42.1k",
-    featuredWork: "https://images.unsplash.com/photo-1495745966610-2a67f2297e5e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=600",
-  },
-];
-
-const nearbyCreators = [
-  {
-    id: 1,
-    name: "Marcus Lee",
-    talent: "💃 Dancer",
-    avatar: "https://images.unsplash.com/photo-1536924430914-91f9e2041b83?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200",
-    distance: "2.3 mi",
-  },
-  {
-    id: 2,
-    name: "Olivia Chen",
-    talent: "🎬 Filmmaker",
-    avatar: "https://images.unsplash.com/photo-1506863530036-1efeddceb993?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200",
-    distance: "3.8 mi",
-  },
-  {
-    id: 3,
-    name: "James Park",
-    talent: "🍳 Chef",
-    avatar: "https://images.unsplash.com/photo-1587397845856-e6cf49176c70?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200",
-    distance: "5.1 mi",
-  },
-];
-
 export default function ExploreScreen() {
+  const [trendingCreators, setTrendingCreators] = useState<any[]>([]);
+  const [nearbyCreators, setNearbyCreators] = useState<any[]>([]);
+
+  useEffect(() => {
+    KinshipPlatformFacade.getInstance().getCreatorsAsync().then(creators => {
+      if (creators && creators.length > 0) {
+        setTrendingCreators(creators);
+        setNearbyCreators([...creators].reverse());
+      }
+    });
+  }, []);
+
   return (
     <div className="min-h-screen bg-background pb-24">
       {/* Header */}
@@ -146,7 +106,7 @@ export default function ExploreScreen() {
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex items-center gap-3">
                             <img
-                              src={creator.avatar}
+                              src={creator.image || creator.avatar}
                               alt={creator.name}
                               className="w-12 h-12 rounded-full object-cover ring-2 ring-primary/20"
                             />
@@ -188,7 +148,7 @@ export default function ExploreScreen() {
                 className="flex-shrink-0 w-40 p-4 cursor-pointer hover:border-primary/50 transition-all"
               >
                 <img
-                  src={creator.avatar}
+                  src={creator.image || creator.avatar}
                   alt={creator.name}
                   className="w-24 h-24 rounded-2xl object-cover mx-auto mb-3 ring-2 ring-primary/20"
                 />

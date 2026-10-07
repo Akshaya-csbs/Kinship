@@ -5,7 +5,7 @@ import BottomNav from "../components/BottomNav";
 import GlassCard from "../components/GlassCard";
 import TalentBadge from "../components/TalentBadge";
 import FloatingActionButton from "../components/FloatingActionButton";
-import JavaOopInspectorModal from "../components/JavaOopInspectorModal";
+
 import { KinshipPlatformFacade } from "../core/services/KinshipPlatformFacade";
 
 const trendingCollaborations = [
@@ -15,7 +15,6 @@ const trendingCollaborations = [
 
 export default function HomeScreen() {
   const [feedPosts, setFeedPosts] = useState<any[]>([]);
-  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
 
   useEffect(() => {
     const facade = KinshipPlatformFacade.getInstance();
@@ -26,6 +25,11 @@ export default function HomeScreen() {
     const facade = KinshipPlatformFacade.getInstance();
     facade.createPost("Collaborating on a new creative project! ✨", "image", "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800");
     facade.getFeedPostsAsync().then((posts) => setFeedPosts(posts));
+  };
+
+  const handleLike = async (postId: number) => {
+    await KinshipPlatformFacade.getInstance().likePost(postId);
+    KinshipPlatformFacade.getInstance().getFeedPostsAsync().then(setFeedPosts);
   };
 
   return (
@@ -41,13 +45,7 @@ export default function HomeScreen() {
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsInspectorOpen(true)}
-              className="px-3 py-1.5 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-400 border border-amber-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
-            >
-              <Cpu className="w-3.5 h-3.5 text-amber-400" />
-              <span>Java OOP Engine</span>
-            </button>
+
             <button className="p-2 hover:bg-secondary rounded-xl transition-colors">
               <MoreVertical className="w-6 h-6 text-foreground" />
             </button>
@@ -100,13 +98,13 @@ export default function HomeScreen() {
                 <div className="p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <img
-                      src={post.user.avatar}
-                      alt={post.user.name}
+                      src={post.creator.image}
+                      alt={post.creator.name}
                       className="w-12 h-12 rounded-full object-cover ring-2 ring-primary/20"
                     />
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="font-semibold text-foreground">{post.user.name}</h3>
+                        <h3 className="font-semibold text-foreground">{post.creator.name}</h3>
                         {post.badge && (
                           <span className="px-2 py-0.5 bg-gradient-to-r from-primary to-accent text-white text-xs rounded-full">
                             {post.badge}
@@ -114,7 +112,7 @@ export default function HomeScreen() {
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        {Array.isArray(post.user.talents) ? post.user.talents.join(" ") : post.user.talents} · {post.time}
+                        {Array.isArray(post.creator.talents) ? post.creator.talents.join(" ") : post.creator.talents} · {post.timestamp}
                       </p>
                     </div>
                   </div>
@@ -142,7 +140,10 @@ export default function HomeScreen() {
                 {/* Post actions */}
                 <div className="p-4 space-y-3">
                   <div className="flex items-center gap-4">
-                    <button className="flex items-center gap-2 text-foreground hover:text-primary transition-colors">
+                    <button 
+                      onClick={() => handleLike(post.id)}
+                      className="flex items-center gap-2 text-foreground hover:text-primary transition-colors"
+                    >
                       <Heart className="w-6 h-6" />
                       <span className="font-medium">{post.likes.toLocaleString()}</span>
                     </button>
@@ -156,7 +157,7 @@ export default function HomeScreen() {
                   </div>
 
                   <p className="text-foreground">
-                    <span className="font-semibold">{post.user.name}</span>{" "}
+                    <span className="font-semibold">{post.creator.name}</span>{" "}
                     <span className="text-foreground/90">{post.caption}</span>
                   </p>
                 </div>
@@ -168,7 +169,7 @@ export default function HomeScreen() {
 
       <BottomNav />
       <FloatingActionButton onClick={handleCreatePost} />
-      <JavaOopInspectorModal isOpen={isInspectorOpen} onClose={() => setIsInspectorOpen(false)} />
+
     </div>
   );
 }

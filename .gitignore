@@ -29,3 +29,5 @@ target/
 *.njsproj
 *.sln
 *.sw?
+*.class
+*.jar

@@ -1,21 +1,33 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { Heart, MessageCircle, Share2, Bookmark, MoreHorizontal, Sparkles, TrendingUp, Users2 } from "lucide-react";
 import { MobileContainer } from "../components/MobileContainer";
 import { BottomNav } from "../components/BottomNav";
-import { mockPosts, mockCreators } from "../data/mockData";
+import { KinshipPlatformFacade } from "../core/services/KinshipPlatformFacade";
 import { Badge } from "../components/ui/badge";
 import { useNavigate } from "react-router";
 
 export function HomeFeedScreen() {
   const [likedPosts, setLikedPosts] = useState<number[]>([]);
   const [savedPosts, setSavedPosts] = useState<number[]>([]);
+  const [mockPosts, setMockPosts] = useState<any[]>([]);
+  const [mockCreators, setMockCreators] = useState<any[]>([]);
   const navigate = useNavigate();
 
-  const toggleLike = (postId: number) => {
+
+  useEffect(() => {
+    const facade = KinshipPlatformFacade.getInstance();
+    facade.getFeedPostsAsync().then(setMockPosts);
+    facade.getCreatorsAsync().then(setMockCreators);
+  }, []);
+
+  const toggleLike = async (postId: number) => {
     setLikedPosts((prev) =>
       prev.includes(postId) ? prev.filter((id) => id !== postId) : [...prev, postId]
     );
+    if (!likedPosts.includes(postId)) {
+        await KinshipPlatformFacade.getInstance().likePost(postId);
+    }
   };
 
   const toggleSave = (postId: number) => {

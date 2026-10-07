@@ -4,7 +4,7 @@ import OnboardingScreen from "./screens/OnboardingScreen";
 import AuthScreen from "./screens/AuthScreen";
 import TalentSelectionScreen from "./screens/TalentSelectionScreen";
 import HomeScreen from "./screens/HomeScreen";
-import ProfileScreen from "./screens/ProfileScreen";
+import { CreatorProfileScreen } from "./screens/CreatorProfileScreen";
 import ExploreScreen from "./screens/ExploreScreen";
 import CollaborationScreen from "./screens/CollaborationScreen";
 import MessagingScreen from "./screens/MessagingScreen";
@@ -34,8 +34,8 @@ export const router = createBrowserRouter([
     element: <HomeScreen />,
   },
   {
-    path: "/profile/:userId",
-    element: <ProfileScreen />,
+    path: "/profile/:id",
+    element: <CreatorProfileScreen />,
   },
   {
     path: "/explore",

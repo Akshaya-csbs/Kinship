@@ -5,9 +5,9 @@ import com.kinship.app.models.CreatorUser;
 import com.kinship.app.models.ImagePost;
 import com.kinship.app.models.Opportunity;
 import com.kinship.app.models.Post;
-import com.kinship.app.repositories.OpportunityJdbcRepository;
-import com.kinship.app.repositories.PostJdbcRepository;
-import com.kinship.app.repositories.UserJdbcRepository;
+import com.kinship.app.mysql.MysqlOpportunityRepository;
+import com.kinship.app.mysql.MysqlPostRepository;
+import com.kinship.app.mysql.MysqlUserRepository;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
@@ -25,16 +25,14 @@ import java.util.concurrent.Executors;
 public class KinshipServer {
     private static final int PORT = 8080;
 
-    private final UserJdbcRepository userRepo;
-    private final PostJdbcRepository postRepo;
-    private final OpportunityJdbcRepository oppRepo;
+    private final MysqlUserRepository userRepo;
+    private final MysqlPostRepository postRepo;
+    private final MysqlOpportunityRepository oppRepo;
 
     public KinshipServer() {
-        // Initialize JDBC Database Manager & Repositories
-        DatabaseManager.getInstance();
-        this.userRepo = new UserJdbcRepository();
-        this.postRepo = new PostJdbcRepository();
-        this.oppRepo = new OpportunityJdbcRepository();
+        this.userRepo = new MysqlUserRepository();
+        this.postRepo = new MysqlPostRepository();
+        this.oppRepo = new MysqlOpportunityRepository();
     }
 
     public void start() throws IOException {
@@ -43,7 +41,10 @@ public class KinshipServer {
         // API Endpoints
         server.createContext("/api/feed", new FeedHandler());
         server.createContext("/api/feed/create", new CreatePostHandler());
+        server.createContext("/api/feed/like", new LikePostHandler());
         server.createContext("/api/creators", new CreatorsHandler());
+        server.createContext("/api/creators/update", new UpdateProfileHandler());
+        server.createContext("/api/creators/follow", new FollowUserHandler());
         server.createContext("/api/opportunities", new OpportunitiesHandler());
         server.createContext("/api/opportunities/apply", new ApplyOpportunityHandler());
         server.createContext("/api/system/oop-metrics", new SystemMetricsHandler());
@@ -95,10 +96,10 @@ public class KinshipServer {
             StringBuilder sb = new StringBuilder("[");
             for (int i = 0; i < posts.size(); i++) {
                 Post p = posts.get(i);
-                sb.append(String.format("{\"id\":%d,\"user\":{\"name\":\"%s\",\"avatar\":\"%s\",\"talents\":[%s]},\"type\":\"%s\",\"content\":\"%s\",\"media\":\"%s\",\"caption\":\"%s\",\"likes\":%d,\"comments\":%d,\"shares\":%d,\"time\":\"%s\",\"badge\":\"%s\"}",
-                        p.getId(), escape(p.getCreator().getName()), escape(p.getCreator().getImage()),
+                sb.append(String.format("{\"id\":%d,\"creator\":{\"id\":%d,\"name\":\"%s\",\"image\":\"%s\",\"talents\":[%s],\"verified\":true},\"type\":\"%s\",\"content\":\"%s\",\"media\":\"%s\",\"caption\":\"%s\",\"likes\":%d,\"comments\":%d,\"shares\":%d,\"timestamp\":\"%s\",\"badge\":\"%s\"}",
+                        p.getId(), p.getCreator().getId(), escape(p.getCreator().getName()), escape(p.getCreator().getImage()),
                         formatTalentsJson(p.getCreator().getTalents()), p.getPostType(),
-                        escape(p.getMediaUrl()), escape(p.getMediaUrl()), escape(p.getContent()),
+                        escape(p.getContent()), escape(p.getMediaUrl()), escape(p.getContent()),
                         p.getLikes(), p.getComments(), p.getShares(), escape(p.getTimestamp()), escape(p.renderBadgeLabel())));
                 if (i < posts.size() - 1) sb.append(",");
             }
@@ -123,6 +124,25 @@ public class KinshipServer {
         }
     }
 
+    private class LikePostHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                // Parse POST ID
+                try {
+                    String query = exchange.getRequestURI().getQuery();
+                    if (query != null && query.contains("id=")) {
+                        long postId = Long.parseLong(query.split("id=")[1]);
+                        postRepo.incrementLike(postId);
+                        sendJsonResponse(exchange, 200, "{\"status\":\"success\",\"message\":\"Post liked\"}");
+                        return;
+                    }
+                } catch (Exception ignored) {}
+            }
+            sendJsonResponse(exchange, 400, "{\"error\":\"Bad Request\"}");
+        }
+    }
+
     private class CreatorsHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
@@ -137,6 +157,68 @@ public class KinshipServer {
             sb.append("]");
             sendJsonResponse(exchange, 200, sb.toString());
         }
+    }
+
+    private class UpdateProfileHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                try {
+                    String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                    // Extract fields manually since we aren't using a JSON parser library
+                    String name = extractJsonField(body, "name");
+                    String bio = extractJsonField(body, "bio");
+                    long id = Long.parseLong(extractJsonField(body, "id"));
+                    
+                    CreatorUser user = userRepo.findById(id);
+                    if (user != null) {
+                        user.setName(name != null ? name : user.getName());
+                        user.setBio(bio != null ? bio : user.getBio());
+                        userRepo.save(user);
+                        sendJsonResponse(exchange, 200, "{\"status\":\"success\"}");
+                        return;
+                    }
+                } catch (Exception ignored) { }
+            }
+            sendJsonResponse(exchange, 400, "{\"error\":\"Bad Request\"}");
+        }
+    }
+
+    private class FollowUserHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                try {
+                    String query = exchange.getRequestURI().getQuery();
+                    if (query != null && query.contains("id=")) {
+                        long followedId = Long.parseLong(query.split("id=")[1]);
+                        // Hardcode follower as user 1 for demo purposes
+                        userRepo.followUser(1L, followedId);
+                        sendJsonResponse(exchange, 200, "{\"status\":\"success\"}");
+                        return;
+                    }
+                } catch (Exception ignored) {}
+            }
+            sendJsonResponse(exchange, 400, "{\"error\":\"Bad Request\"}");
+        }
+    }
+
+    private static String extractJsonField(String json, String field) {
+        String key = "\"" + field + "\":\"";
+        int idx = json.indexOf(key);
+        if (idx == -1) {
+            key = "\"" + field + "\":";
+            idx = json.indexOf(key);
+            if (idx == -1) return null;
+            int end = json.indexOf(",", idx);
+            if (end == -1) end = json.indexOf("}", idx);
+            return json.substring(idx + key.length(), end).trim();
+        }
+        int end = json.indexOf("\"", idx + key.length());
+        if (end != -1) {
+            return json.substring(idx + key.length(), end);
+        }
+        return null;
     }
 
     private class OpportunitiesHandler implements HttpHandler {
@@ -166,7 +248,7 @@ public class KinshipServer {
     private class SystemMetricsHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            String json = String.format("{\"server\":\"Kinship Java HTTP Server v1.0\",\"jdbc\":\"Active H2/SQLite Database\",\"userCount\":%d,\"postCount\":%d,\"opportunityCount\":%d}",
+            String json = String.format("{\"server\":\"Kinship Java HTTP Server v1.0\",\"jdbc\":\"Active MySQL Database\",\"userCount\":%d,\"postCount\":%d,\"opportunityCount\":%d}",
                     userRepo.count(), postRepo.count(), oppRepo.count());
             sendJsonResponse(exchange, 200, json);
         }

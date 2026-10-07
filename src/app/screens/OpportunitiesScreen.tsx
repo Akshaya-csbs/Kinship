@@ -1,70 +1,9 @@
 import { motion } from "motion/react";
 import { Sparkles, MapPin, Calendar, DollarSign, Users, Flame, Award, Briefcase } from "lucide-react";
+import { useState, useEffect } from "react";
 import BottomNav from "../components/BottomNav";
 import GlassCard from "../components/GlassCard";
-
-const opportunities = [
-  {
-    id: 1,
-    type: "gig",
-    title: "Live Performance at Summer Music Festival",
-    organizer: "Sunset Festival",
-    location: "Los Angeles, CA",
-    date: "June 15, 2026",
-    compensation: "$500-1000",
-    talents: ["🎵", "🎸"],
-    deadline: "3 days left",
-    featured: true,
-  },
-  {
-    id: 2,
-    type: "collaboration",
-    title: "Music Video Production",
-    organizer: "Independent Film Crew",
-    location: "Remote",
-    date: "Flexible",
-    compensation: "Revenue Share",
-    talents: ["🎬", "🎵"],
-    deadline: "2 weeks left",
-    featured: false,
-  },
-  {
-    id: 3,
-    type: "competition",
-    title: "Urban Art Competition 2026",
-    organizer: "City Arts Council",
-    location: "New York, NY",
-    date: "July 1, 2026",
-    compensation: "$5000 Prize",
-    talents: ["🎨"],
-    deadline: "1 month left",
-    featured: true,
-  },
-  {
-    id: 4,
-    type: "workshop",
-    title: "Advanced Photography Workshop",
-    organizer: "CreativeLens Studio",
-    location: "San Francisco, CA",
-    date: "June 20, 2026",
-    compensation: "Free",
-    talents: ["📸"],
-    deadline: "1 week left",
-    featured: false,
-  },
-  {
-    id: 5,
-    type: "audition",
-    title: "Dancer Audition - Broadway Show",
-    organizer: "Theater Productions Inc",
-    location: "New York, NY",
-    date: "June 10, 2026",
-    compensation: "$2000-3000/week",
-    talents: ["💃"],
-    deadline: "5 days left",
-    featured: true,
-  },
-];
+import { KinshipPlatformFacade } from "../core/services/KinshipPlatformFacade";
 
 const categories = [
   { icon: Briefcase, label: "All", active: true },
@@ -74,6 +13,20 @@ const categories = [
 ];
 
 export default function OpportunitiesScreen() {
+  const [opportunities, setOpportunities] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch("http://localhost:8080/api/opportunities")
+      .then(res => res.json())
+      .then(setOpportunities)
+      .catch(console.error);
+  }, []);
+
+  const handleApply = (id: number) => {
+    fetch(`http://localhost:8080/api/opportunities/apply?id=${id}`, { method: 'POST' })
+      .then(() => fetch("http://localhost:8080/api/opportunities").then(res => res.json()).then(setOpportunities));
+  };
+  
   return (
     <div className="min-h-screen bg-background pb-24">
       {/* Header */}
@@ -167,8 +120,11 @@ export default function OpportunitiesScreen() {
 
               <div className="flex items-center justify-between pt-4 border-t border-white/10">
                 <span className="text-sm text-muted-foreground">{opportunity.deadline}</span>
-                <button className="px-6 py-2 bg-gradient-to-r from-primary to-accent text-white rounded-lg font-medium hover:shadow-lg hover:shadow-primary/30 transition-all active:scale-95">
-                  Apply Now
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handleApply(opportunity.id); }}
+                  className="px-6 py-2 bg-gradient-to-r from-primary to-accent text-white rounded-lg font-medium hover:shadow-lg hover:shadow-primary/30 transition-all active:scale-95"
+                >
+                  {opportunity.applicants > 0 ? `Apply (${opportunity.applicants})` : "Apply Now"}
                 </button>
               </div>
             </GlassCard>

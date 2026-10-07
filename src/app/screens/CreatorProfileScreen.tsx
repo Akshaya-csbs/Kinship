@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import { motion } from "motion/react";
 import {
@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { MobileContainer } from "../components/MobileContainer";
 import { BottomNav } from "../components/BottomNav";
-import { mockCreators } from "../data/mockData";
+import { KinshipPlatformFacade } from "../core/services/KinshipPlatformFacade";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 
@@ -24,8 +24,23 @@ export function CreatorProfileScreen() {
   const navigate = useNavigate();
   const [isFollowing, setIsFollowing] = useState(false);
   const [activeTab, setActiveTab] = useState<"grid" | "video">("grid");
+  const [creator, setCreator] = useState<any>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editBio, setEditBio] = useState("");
 
-  const creator = mockCreators.find((c) => c.id === Number(id)) || mockCreators[0];
+  useEffect(() => {
+    KinshipPlatformFacade.getInstance().getCreatorsAsync().then(creators => {
+      if (creators && creators.length > 0) {
+        const found = creators.find((c: any) => c.id === Number(id)) || creators[0];
+        setCreator(found);
+        setEditName(found.name);
+        setEditBio(found.bio);
+      }
+    });
+  }, [id]);
+
+  if (!creator) return <div className="p-8 text-center">Loading...</div>;
 
   // Mock portfolio images
   const portfolioImages = Array(9).fill(null).map((_, i) => creator.image);
@@ -86,12 +101,29 @@ export function CreatorProfileScreen() {
 
           {/* Bio */}
           <div className="space-y-3">
-            <div>
-              <h2 className="text-lg font-bold mb-1">{creator.name}</h2>
-              <p className="text-sm text-muted-foreground">{creator.username}</p>
-            </div>
-
-            <p className="text-sm leading-relaxed">{creator.bio}</p>
+            {isEditing ? (
+              <div className="space-y-2">
+                <input 
+                  type="text" 
+                  value={editName} 
+                  onChange={(e) => setEditName(e.target.value)} 
+                  className="w-full bg-muted/50 border border-border rounded-lg p-2 text-sm font-bold"
+                />
+                <textarea 
+                  value={editBio} 
+                  onChange={(e) => setEditBio(e.target.value)} 
+                  className="w-full bg-muted/50 border border-border rounded-lg p-2 text-sm leading-relaxed min-h-[80px]"
+                />
+              </div>
+            ) : (
+              <>
+                <div>
+                  <h2 className="text-lg font-bold mb-1">{creator.name}</h2>
+                  <p className="text-sm text-muted-foreground">{creator.username}</p>
+                </div>
+                <p className="text-sm leading-relaxed">{creator.bio}</p>
+              </>
+            )}
 
             {/* Location */}
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -132,33 +164,70 @@ export function CreatorProfileScreen() {
 
           {/* Action Buttons */}
           <div className="flex gap-3">
-            <Button
-              onClick={() => setIsFollowing(!isFollowing)}
-              className={`flex-1 h-11 rounded-2xl transition-all ${
-                isFollowing
-                  ? "bg-muted text-foreground hover:bg-muted/80"
-                  : "bg-gradient-to-r from-primary to-secondary hover:shadow-lg hover:shadow-primary/50"
-              }`}
-            >
-              <Users className="w-4 h-4 mr-2" />
-              {isFollowing ? "Following" : "Follow"}
-            </Button>
+            {isEditing ? (
+              <>
+                <Button
+                  onClick={async () => {
+                    const facade = KinshipPlatformFacade.getInstance();
+                    const success = await facade.updateProfile(creator.id, editName, editBio);
+                    if (success) {
+                      setCreator({ ...creator, name: editName, bio: editBio });
+                      setIsEditing(false);
+                    }
+                  }}
+                  className="flex-1 h-11 rounded-2xl bg-gradient-to-r from-primary to-secondary hover:shadow-lg transition-all"
+                >
+                  Save Profile
+                </Button>
+                <Button
+                  onClick={() => {
+                    setEditName(creator.name);
+                    setEditBio(creator.bio);
+                    setIsEditing(false);
+                  }}
+                  variant="outline"
+                  className="flex-1 h-11 rounded-2xl border-border hover:bg-accent"
+                >
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <>
+                {creator.id === 1 ? (
+                  // Hardcoded user 1 as the current logged-in user to show Edit Profile
+                  <Button
+                    onClick={() => setIsEditing(true)}
+                    className="flex-1 h-11 rounded-2xl bg-gradient-to-r from-primary to-secondary hover:shadow-lg transition-all"
+                  >
+                    Edit Profile
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={async () => {
+                      const facade = KinshipPlatformFacade.getInstance();
+                      await facade.followUser(creator.id);
+                      setIsFollowing(true);
+                      setCreator({ ...creator, followers: creator.followers + 1 });
+                    }}
+                    className={`flex-1 h-11 rounded-2xl transition-all ${
+                      isFollowing
+                        ? "bg-muted text-foreground hover:bg-muted/80"
+                        : "bg-gradient-to-r from-primary to-secondary hover:shadow-lg hover:shadow-primary/50"
+                    }`}
+                  >
+                    <Users className="w-4 h-4 mr-2" />
+                    {isFollowing ? "Following" : "Follow"}
+                  </Button>
+                )}
 
-            <Button
-              onClick={() => navigate("/messages")}
-              variant="outline"
-              className="flex-1 h-11 rounded-2xl border-border hover:bg-accent"
-            >
-              <MessageCircle className="w-4 h-4 mr-2" />
-              Message
-            </Button>
-
-            <Button
-              variant="outline"
-              className="h-11 px-4 rounded-2xl border-border hover:bg-accent"
-            >
-              <LinkIcon className="w-4 h-4" />
-            </Button>
+                <Button
+                  variant="outline"
+                  className="h-11 px-6 rounded-2xl border-border hover:bg-accent"
+                >
+                  Share
+                </Button>
+              </>
+            )}
           </div>
         </div>
 

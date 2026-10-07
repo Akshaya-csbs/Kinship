@@ -40,8 +40,10 @@ public abstract class User extends AbstractEntity implements ITalentSearchable, 
     }
 
     public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
     public String getUsername() { return username; }
     public String getBio() { return bio; }
+    public void setBio(String bio) { this.bio = bio; }
     public String getImage() { return image; }
     public String getLocation() { return location; }
     public int getFollowers() { return followers; }
