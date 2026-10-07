@@ -1,88 +1,11 @@
 import { motion } from "motion/react";
-import { Heart, MessageCircle, UserPlus, Users, Award, Sparkles, Clock } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
+import { Heart, MessageCircle, UserPlus, Users, Award, Sparkles, Clock, Mail, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import BottomNav from "../components/BottomNav";
 import GlassCard from "../components/GlassCard";
-
-const notifications = [
-  {
-    id: 1,
-    type: "like",
-    user: {
-      name: "Maya Rodriguez",
-      avatar: "https://images.unsplash.com/photo-1506863530036-1efeddceb993?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200",
-    },
-    action: "liked your post",
-    content: "New abstract piece exploring emotion",
-    time: "5m ago",
-    read: false,
-  },
-  {
-    id: 2,
-    type: "collaboration",
-    user: {
-      name: "Jordan Chen",
-      avatar: "https://images.unsplash.com/photo-1547153760-18fc86324498?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200",
-    },
-    action: "invited you to collaborate on",
-    content: "Summer Vibes EP",
-    time: "1h ago",
-    read: false,
-  },
-  {
-    id: 3,
-    type: "follow",
-    user: {
-      name: "Sarah Kim",
-      avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200",
-    },
-    action: "started following you",
-    time: "2h ago",
-    read: false,
-  },
-  {
-    id: 4,
-    type: "comment",
-    user: {
-      name: "David Torres",
-      avatar: "https://images.unsplash.com/photo-1618673747378-7e0d3561371a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200",
-    },
-    action: "commented on your post",
-    content: "This is incredible! 🔥",
-    time: "3h ago",
-    read: true,
-  },
-  {
-    id: 5,
-    type: "achievement",
-    action: "You've reached 10,000 followers!",
-    content: "Keep creating amazing content",
-    time: "1d ago",
-    read: true,
-  },
-  {
-    id: 6,
-    type: "like",
-    user: {
-      name: "Emma Zhang",
-      avatar: "https://images.unsplash.com/photo-1660092626225-f291ab2970b9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200",
-    },
-    action: "and 23 others liked your collaboration",
-    content: "Urban Photography Series",
-    time: "1d ago",
-    read: true,
-  },
-  {
-    id: 7,
-    type: "follow",
-    user: {
-      name: "Marcus Lee",
-      avatar: "https://images.unsplash.com/photo-1536924430914-91f9e2041b83?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200",
-    },
-    action: "started following you",
-    time: "2d ago",
-    read: true,
-  },
-];
+import { api, errorMessage } from "../core/services/KinshipPlatformFacade";
 
 const getIcon = (type: string) => {
   switch (type) {
@@ -96,13 +19,66 @@ const getIcon = (type: string) => {
       return <Users className="w-5 h-5 text-purple-500" />;
     case "achievement":
       return <Award className="w-5 h-5 text-yellow-500" />;
+    case "message":
+      return <Mail className="w-5 h-5 text-sky-500" />;
     default:
       return <Sparkles className="w-5 h-5 text-primary" />;
   }
 };
 
+/** Where tapping a notification takes the user. */
+const targetFor = (n: any): string | null => {
+  switch (n.type) {
+    case "like":
+    case "comment":
+      return "/profile/me";
+    case "follow":
+      return n.user ? `/profile/${n.user.id}` : null;
+    case "collaboration":
+      return "/collaborate";
+    case "message":
+      return n.user ? `/messages/${n.user.id}` : "/messages";
+    default:
+      return null;
+  }
+};
+
 export default function NotificationsScreen() {
+  const navigate = useNavigate();
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const unreadCount = notifications.filter((n) => !n.read).length;
+
+  useEffect(() => {
+    api
+      .getNotifications()
+      .then((data) => setNotifications(data.items))
+      .catch((err) => toast.error(errorMessage(err)))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const markAllRead = async () => {
+    if (unreadCount === 0) {
+      toast.info("You're all caught up");
+      return;
+    }
+    try {
+      await api.markAllNotificationsRead();
+      setNotifications((list) => list.map((n) => ({ ...n, read: true })));
+      toast.success("All notifications marked as read");
+    } catch (err) {
+      toast.error(errorMessage(err));
+    }
+  };
+
+  const open = async (notification: any) => {
+    if (!notification.read) {
+      setNotifications((list) => list.map((n) => (n.id === notification.id ? { ...n, read: true } : n)));
+      api.markNotificationRead(notification.id).catch((err) => toast.error(errorMessage(err)));
+    }
+    const target = targetFor(notification);
+    if (target) navigate(target);
+  };
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -118,7 +94,7 @@ export default function NotificationsScreen() {
                 </span>
               )}
             </h1>
-            <button className="text-sm text-primary hover:text-primary/80 transition-colors">
+            <button onClick={markAllRead} className="text-sm text-primary hover:text-primary/80 transition-colors">
               Mark all as read
             </button>
           </div>
@@ -126,6 +102,12 @@ export default function NotificationsScreen() {
       </div>
 
       <div className="max-w-2xl mx-auto px-6 py-6">
+        {loading && (
+          <div className="flex justify-center py-12">
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          </div>
+        )}
+
         {/* Notifications list */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -137,9 +119,10 @@ export default function NotificationsScreen() {
               key={notification.id}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.05 }}
+              transition={{ delay: Math.min(index, 8) * 0.05 }}
             >
               <GlassCard
+                onClick={() => open(notification)}
                 className={`p-4 cursor-pointer hover:border-primary/50 transition-all ${
                   !notification.read ? "ring-2 ring-primary/20" : ""
                 }`}
@@ -149,7 +132,7 @@ export default function NotificationsScreen() {
                   {notification.user ? (
                     <div className="relative flex-shrink-0">
                       <img
-                        src={notification.user.avatar}
+                        src={notification.user.image}
                         alt={notification.user.name}
                         className="w-12 h-12 rounded-full object-cover ring-2 ring-primary/20"
                       />
@@ -178,7 +161,7 @@ export default function NotificationsScreen() {
                     )}
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">
                       <Clock className="w-3 h-3" />
-                      <span>{notification.time}</span>
+                      <span>{notification.timestamp}</span>
                     </div>
                   </div>
 
@@ -193,7 +176,7 @@ export default function NotificationsScreen() {
         </motion.div>
 
         {/* Empty state */}
-        {notifications.length === 0 && (
+        {!loading && notifications.length === 0 && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

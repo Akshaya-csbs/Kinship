@@ -1,152 +1,302 @@
 package com.kinship.app.mysql;
 
+import com.kinship.app.exceptions.DatabaseException;
+import com.kinship.app.exceptions.ValidationException;
 import com.kinship.app.interfaces.IRepository;
 import com.kinship.app.models.CreatorUser;
-import com.kinship.app.exceptions.DatabaseException;
-import com.kinship.app.exceptions.GlobalExceptionHandler;
+import com.kinship.app.util.TextUtil;
 
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.SQLIntegrityConstraintViolationException;
+import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.TreeMap;
 
-public class MysqlUserRepository implements IRepository<CreatorUser, Long> {
-    private final MysqlDatabaseManager dbManager;
+/**
+ * JDBC repository for the users and follows tables.
+ */
+public class MysqlUserRepository extends BaseMysqlRepository implements IRepository<CreatorUser, Long> {
 
-    public MysqlUserRepository() {
-        this.dbManager = MysqlDatabaseManager.getInstance();
-    }
+    /** Login data, kept out of the {@link CreatorUser} model on purpose. */
+    public record Credentials(long userId, String passwordHash) {}
 
-    @Override
-    public CreatorUser save(CreatorUser user) {
-        String sql = "REPLACE INTO users (id, name, username, bio, image, location, talents, followers, following, verified, achievements) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        try (Connection conn = dbManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+    /** Result of a follow/unfollow toggle. */
+    public record FollowResult(boolean following, int followers) {}
 
-            stmt.setLong(1, user.getId());
-            stmt.setString(2, user.getName());
-            stmt.setString(3, user.getUsername());
-            stmt.setString(4, user.getBio());
-            stmt.setString(5, user.getImage());
-            stmt.setString(6, user.getLocation());
-            stmt.setString(7, String.join(", ", user.getTalents()));
-            stmt.setInt(8, user.getFollowers());
-            stmt.setInt(9, user.getFollowing());
-            stmt.setBoolean(10, user.isVerified());
-            stmt.setString(11, String.join(", ", user.getAchievements()));
+    private static final String[] USER_COLUMNS = {
+            "id", "name", "username", "email", "bio", "image", "location", "talents",
+            "followers", "following", "verified", "achievements", "created_at"
+    };
 
-            stmt.executeUpdate();
-            return user;
-        } catch (SQLException e) {
-            GlobalExceptionHandler.getInstance().handleException(new DatabaseException("MySQL User save failed", e));
-            return null;
+    /** "u.id AS u_id, u.name AS u_name, ..." so user columns can be joined into other queries. */
+    public static String userColumns(String alias, String prefix) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < USER_COLUMNS.length; i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(alias).append('.').append(USER_COLUMNS[i]).append(" AS ").append(prefix).append(USER_COLUMNS[i]);
         }
+        return sb.toString();
     }
 
-    @Override
-    public CreatorUser findById(Long id) {
-        String sql = "SELECT * FROM users WHERE id = ?";
-        try (Connection conn = dbManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-            stmt.setLong(1, id);
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return mapRowToCreatorUser(rs);
-                }
-            }
-        } catch (Exception e) {
-            GlobalExceptionHandler.getInstance().handleException(new DatabaseException("MySQL User findById failed", null));
-        }
-        return null;
-    }
-
-    @Override
-    public List<CreatorUser> findAll() {
-        List<CreatorUser> list = new ArrayList<>();
-        String sql = "SELECT * FROM users ORDER BY followers DESC";
-        try (Connection conn = dbManager.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-
-            while (rs.next()) {
-                CreatorUser user = mapRowToCreatorUser(rs);
-                if (user != null) list.add(user);
-            }
-        } catch (Exception e) {
-            GlobalExceptionHandler.getInstance().handleException(new DatabaseException("MySQL User findAll failed", null));
-        }
-        return list;
-    }
-
-    @Override
-    public boolean deleteById(Long id) {
-        String sql = "DELETE FROM users WHERE id = ?";
-        try (Connection conn = dbManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setLong(1, id);
-            return stmt.executeUpdate() > 0;
-        } catch (SQLException e) {
-            GlobalExceptionHandler.getInstance().handleException(new DatabaseException("MySQL User delete failed", e));
-            return false;
-        }
-    }
-
-    @Override
-    public int count() {
-        String sql = "SELECT COUNT(*) FROM users";
-        try (Connection conn = dbManager.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-            if (rs.next()) return rs.getInt(1);
-        } catch (SQLException e) {
-            GlobalExceptionHandler.getInstance().handleException(new DatabaseException("MySQL count failed", e));
-        }
-        return 0;
-    }
-
-    public boolean followUser(Long followerId, Long followedId) {
-        String sql = "INSERT IGNORE INTO connections (follower_id, followed_id) VALUES (?, ?)";
-        try (Connection conn = dbManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setLong(1, followerId);
-            stmt.setLong(2, followedId);
-            int rows = stmt.executeUpdate();
-            if (rows > 0) {
-                // Update follower and following counts
-                try (Statement updateStmt = conn.createStatement()) {
-                    updateStmt.execute("UPDATE users SET following = following + 1 WHERE id = " + followerId);
-                    updateStmt.execute("UPDATE users SET followers = followers + 1 WHERE id = " + followedId);
-                }
-                return true;
-            }
-        } catch (SQLException e) {
-            GlobalExceptionHandler.getInstance().handleException(new DatabaseException("MySQL followUser failed", e));
-        }
-        return false;
-    }
-
-    private CreatorUser mapRowToCreatorUser(ResultSet rs) {
+    /** Maps the (optionally prefixed) user columns of the current row to a {@link CreatorUser}. */
+    public static CreatorUser mapUser(ResultSet rs, String prefix) throws SQLException {
         try {
-            long id = rs.getLong("id");
-            String name = rs.getString("name");
-            String username = rs.getString("username");
-            String bio = rs.getString("bio");
-            String image = rs.getString("image");
-            String location = rs.getString("location");
-            String talentsStr = rs.getString("talents");
-            int followers = rs.getInt("followers");
-            int following = rs.getInt("following");
-            boolean verified = rs.getBoolean("verified");
-            String achievementsStr = rs.getString("achievements");
+            return new CreatorUser(
+                    rs.getLong(prefix + "id"),
+                    rs.getString(prefix + "name"),
+                    rs.getString(prefix + "username"),
+                    rs.getString(prefix + "email"),
+                    rs.getString(prefix + "bio"),
+                    rs.getString(prefix + "image"),
+                    rs.getString(prefix + "location"),
+                    TextUtil.splitList(rs.getString(prefix + "talents")),
+                    rs.getInt(prefix + "followers"),
+                    rs.getInt(prefix + "following"),
+                    rs.getBoolean(prefix + "verified"),
+                    TextUtil.splitList(rs.getString(prefix + "achievements")),
+                    toLocal(rs.getTimestamp(prefix + "created_at")));
+        } catch (ValidationException e) {
+            throw new SQLException("Corrupt user row #" + rs.getLong(prefix + "id") + ": " + e.getMessage(), e);
+        }
+    }
 
-            List<String> talents = talentsStr != null && !talentsStr.isEmpty() ? Arrays.asList(talentsStr.split("\\s*,\\s*")) : new ArrayList<>();
-            List<String> achievements = achievementsStr != null && !achievementsStr.isEmpty() ? Arrays.asList(achievementsStr.split("\\s*,\\s*")) : new ArrayList<>();
+    private static final String SELECT_USERS = "SELECT " + userColumns("u", "") + " FROM users u";
 
-            return new CreatorUser(id, name, username, bio, image, location, talents, followers, following, verified, achievements);
-        } catch (Exception e) {
-            GlobalExceptionHandler.getInstance().handleException(e);
-            return null;
+    // ------------------------------------------------------------------ IRepository
+
+    /** Updates the editable profile columns of an existing user. */
+    @Override
+    public CreatorUser save(CreatorUser user) throws DatabaseException {
+        if (user.getId() == 0) {
+            throw new DatabaseException("New users must be created with register()");
+        }
+        String sql = "UPDATE users SET name = ?, bio = ?, image = ?, location = ?, talents = ? WHERE id = ?";
+        db.execute("Update user", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, user.getName());
+                ps.setString(2, user.getBio());
+                ps.setString(3, user.getImage());
+                ps.setString(4, user.getLocation());
+                ps.setString(5, TextUtil.joinList(user.getTalents()));
+                ps.setLong(6, user.getId());
+                return ps.executeUpdate();
+            }
+        });
+        return user;
+    }
+
+    @Override
+    public Optional<CreatorUser> findById(Long id) throws DatabaseException {
+        return db.execute("Find user", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(SELECT_USERS + " WHERE u.id = ?")) {
+                ps.setLong(1, id);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next() ? Optional.of(mapUser(rs, "")) : Optional.empty();
+                }
+            }
+        });
+    }
+
+    @Override
+    public List<CreatorUser> findAll() throws DatabaseException {
+        return search(null, null);
+    }
+
+    @Override
+    public boolean deleteById(Long id) throws DatabaseException {
+        return db.execute("Delete user", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement("DELETE FROM users WHERE id = ?")) {
+                ps.setLong(1, id);
+                return ps.executeUpdate() > 0;
+            }
+        });
+    }
+
+    @Override
+    public int count() throws DatabaseException {
+        return db.execute("Count users", conn -> {
+            try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM users")) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        });
+    }
+
+    // ------------------------------------------------------------------ auth
+
+    public CreatorUser register(CreatorUser user, String passwordHash) throws DatabaseException {
+        String sql = "INSERT INTO users (name, username, email, password_hash, bio, image, location, talents, created_at) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        long id = db.execute("Register user", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+                ps.setString(1, user.getName());
+                ps.setString(2, user.getUsername());
+                ps.setString(3, user.getEmail());
+                ps.setString(4, passwordHash);
+                ps.setString(5, user.getBio());
+                ps.setString(6, user.getImage());
+                ps.setString(7, user.getLocation());
+                ps.setString(8, TextUtil.joinList(user.getTalents()));
+                ps.setTimestamp(9, nowTimestamp());
+                ps.executeUpdate();
+                return generatedKey(ps);
+            }
+        });
+        user.assignId(id);
+        return user;
+    }
+
+    public Optional<Credentials> findCredentialsByEmail(String email) throws DatabaseException {
+        return db.execute("Find credentials", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement("SELECT id, password_hash FROM users WHERE LOWER(email) = LOWER(?)")) {
+                ps.setString(1, email);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next() ? Optional.of(new Credentials(rs.getLong(1), rs.getString(2))) : Optional.empty();
+                }
+            }
+        });
+    }
+
+    public boolean existsByEmail(String email) throws DatabaseException {
+        return exists("SELECT 1 FROM users WHERE LOWER(email) = LOWER(?)", email);
+    }
+
+    public boolean existsByUsername(String username) throws DatabaseException {
+        return exists("SELECT 1 FROM users WHERE LOWER(username) = LOWER(?)", username);
+    }
+
+    private boolean exists(String sql, String value) throws DatabaseException {
+        return db.execute("Exists check", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, value);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next();
+                }
+            }
+        });
+    }
+
+    // ------------------------------------------------------------------ search & stats
+
+    /** Case-insensitive search on name/username/bio/talents, optionally limited to one talent. */
+    public List<CreatorUser> search(String query, String talent) throws DatabaseException {
+        StringBuilder sql = new StringBuilder(SELECT_USERS).append(" WHERE 1 = 1");
+        List<String> params = new ArrayList<>();
+        if (!TextUtil.isBlank(query)) {
+            sql.append(" AND (LOWER(u.name) LIKE ? OR LOWER(u.username) LIKE ? OR LOWER(u.talents) LIKE ? OR LOWER(u.location) LIKE ?)");
+            String like = "%" + query.toLowerCase().trim() + "%";
+            for (int i = 0; i < 4; i++) params.add(like);
+        }
+        if (!TextUtil.isBlank(talent)) {
+            sql.append(" AND LOWER(u.talents) LIKE ?");
+            params.add("%" + talent.toLowerCase().trim() + "%");
+        }
+        sql.append(" ORDER BY u.followers DESC");
+        return db.execute("Search users", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+                for (int i = 0; i < params.size(); i++) {
+                    ps.setString(i + 1, params.get(i));
+                }
+                List<CreatorUser> users = new ArrayList<>();
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        users.add(mapUser(rs, ""));
+                    }
+                }
+                return users;
+            }
+        });
+    }
+
+    /** Number of creators per talent, most popular first. */
+    public Map<String, Integer> talentCounts() throws DatabaseException {
+        Map<String, Integer> counts = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (CreatorUser user : findAll()) {
+            for (String talent : user.getTalents()) {
+                counts.merge(talent, 1, Integer::sum);
+            }
+        }
+        Map<String, Integer> sorted = new LinkedHashMap<>();
+        counts.entrySet().stream()
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                .forEach(e -> sorted.put(e.getKey(), e.getValue()));
+        return sorted;
+    }
+
+    public int countPosts(long userId) throws DatabaseException {
+        return db.execute("Count posts of user", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM posts WHERE creator_id = ?")) {
+                ps.setLong(1, userId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next() ? rs.getInt(1) : 0;
+                }
+            }
+        });
+    }
+
+    // ------------------------------------------------------------------ follows
+
+    public boolean isFollowing(long followerId, long followedId) throws DatabaseException {
+        return db.execute("Check follow", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT 1 FROM follows WHERE follower_id = ? AND followed_id = ?")) {
+                ps.setLong(1, followerId);
+                ps.setLong(2, followedId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next();
+                }
+            }
+        });
+    }
+
+    /** Follows or unfollows in a single transaction and keeps both counters consistent. */
+    public FollowResult toggleFollow(long followerId, long followedId) throws DatabaseException {
+        return db.inTransaction("Toggle follow", conn -> {
+            boolean nowFollowing;
+            try (PreparedStatement del = conn.prepareStatement(
+                    "DELETE FROM follows WHERE follower_id = ? AND followed_id = ?")) {
+                del.setLong(1, followerId);
+                del.setLong(2, followedId);
+                nowFollowing = del.executeUpdate() == 0;
+            }
+            int delta = nowFollowing ? 1 : -1;
+            if (nowFollowing) {
+                try (PreparedStatement ins = conn.prepareStatement(
+                        "INSERT INTO follows (follower_id, followed_id, created_at) VALUES (?, ?, ?)")) {
+                    ins.setLong(1, followerId);
+                    ins.setLong(2, followedId);
+                    ins.setTimestamp(3, nowTimestamp());
+                    ins.executeUpdate();
+                } catch (SQLIntegrityConstraintViolationException concurrentFollow) {
+                    delta = 0; // a parallel request already created this follow
+                }
+            }
+            if (delta != 0) {
+                adjustCounter(conn, "following", followerId, delta);
+                adjustCounter(conn, "followers", followedId, delta);
+            }
+            try (PreparedStatement ps = conn.prepareStatement("SELECT followers FROM users WHERE id = ?")) {
+                ps.setLong(1, followedId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return new FollowResult(nowFollowing, rs.next() ? rs.getInt(1) : 0);
+                }
+            }
+        });
+    }
+
+    private static void adjustCounter(Connection conn, String column, long userId, int delta) throws SQLException {
+        // column is one of two constants above, never user input
+        try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE users SET " + column + " = GREATEST(0, " + column + " + ?) WHERE id = ?")) {
+            ps.setInt(1, delta);
+            ps.setLong(2, userId);
+            ps.executeUpdate();
         }
     }
 }

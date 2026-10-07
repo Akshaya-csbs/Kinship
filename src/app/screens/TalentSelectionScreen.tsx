@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
-import { Music, Palette, Camera, Utensils, Dumbbell, Pen, Film, Gamepad2, Heart, Mic2, Check } from "lucide-react";
+import { Music, Palette, Camera, Utensils, Dumbbell, Pen, Film, Gamepad2, Heart, Mic2, Check, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import GlassCard from "../components/GlassCard";
+import { api, errorMessage } from "../core/services/KinshipPlatformFacade";
 
 const talents = [
   { id: "music", icon: Music, label: "Music", gradient: "from-pink-500 to-rose-500" },
@@ -18,7 +20,13 @@ const talents = [
 ];
 
 export default function TalentSelectionScreen() {
-  const [selectedTalents, setSelectedTalents] = useState<string[]>([]);
+  const [selectedTalents, setSelectedTalents] = useState<string[]>(() => {
+    const current: string[] = api.getCurrentUser()?.talents ?? [];
+    return talents
+      .filter((t) => current.some((c) => c.toLowerCase() === t.label.toLowerCase()))
+      .map((t) => t.id);
+  });
+  const [saving, setSaving] = useState(false);
   const navigate = useNavigate();
 
   const toggleTalent = (id: string) => {
@@ -27,9 +35,18 @@ export default function TalentSelectionScreen() {
     );
   };
 
-  const handleContinue = () => {
-    if (selectedTalents.length > 0) {
+  const handleContinue = async () => {
+    if (selectedTalents.length === 0 || saving) return;
+    setSaving(true);
+    try {
+      const labels = talents.filter((t) => selectedTalents.includes(t.id)).map((t) => t.label);
+      await api.updateTalents(labels);
+      toast.success("Talents saved to your profile");
       navigate("/home");
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -109,13 +126,14 @@ export default function TalentSelectionScreen() {
       >
         <button
           onClick={handleContinue}
-          disabled={selectedTalents.length === 0}
-          className={`w-full py-4 rounded-2xl font-medium transition-all ${
+          disabled={selectedTalents.length === 0 || saving}
+          className={`w-full py-4 rounded-2xl font-medium transition-all flex items-center justify-center gap-2 ${
             selectedTalents.length > 0
               ? "bg-gradient-to-r from-primary to-accent text-white hover:shadow-2xl hover:shadow-primary/30 active:scale-95"
               : "bg-secondary text-muted-foreground cursor-not-allowed"
           }`}
         >
+          {saving && <Loader2 className="w-4 h-4 animate-spin" />}
           Continue {selectedTalents.length > 0 && `(${selectedTalents.length} selected)`}
         </button>
       </motion.div>

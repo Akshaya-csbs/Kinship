@@ -1,10 +1,15 @@
 package com.kinship.app.interfaces;
 
 /**
- * Java Interface contract for notifiable entities.
+ * Anything that can receive a notification.
  */
 public interface INotifiable {
     long getId();
-    void receiveNotification(String message, String type);
-    int getUnreadCount();
+
+    String getDisplayName();
+
+    /** Text shown to the recipient, personalised by the implementing class. */
+    default String formatNotification(String message) {
+        return "Hey " + getDisplayName() + ", " + message;
+    }
 }

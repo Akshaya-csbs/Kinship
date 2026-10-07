@@ -2,30 +2,28 @@ package com.kinship.app.models;
 
 import com.kinship.app.exceptions.ValidationException;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
+/**
+ * OOP: INHERITANCE. A concrete {@link User} that publishes creative work.
+ */
 public class CreatorUser extends User {
-    private final List<String> talents;
     private final List<String> achievements;
     private final boolean verified;
 
-    public CreatorUser(long id, String name, String username, String bio, String image, String location,
-                       List<String> talents, int followers, int following, boolean verified, List<String> achievements)
-            throws ValidationException {
-        super(id, name, username, bio, image, location, followers, following);
-        this.talents = new ArrayList<>(talents);
+    public CreatorUser(long id, String name, String username, String email, String bio, String image, String location,
+                       List<String> talents, int followers, int following, boolean verified, List<String> achievements,
+                       LocalDateTime createdAt) throws ValidationException {
+        super(id, name, username, email, bio, image, location, talents, followers, following, createdAt);
         this.achievements = achievements != null ? new ArrayList<>(achievements) : new ArrayList<>();
         this.verified = verified;
     }
 
-    @Override
-    public List<String> getTalents() {
-        return talents;
-    }
-
     public List<String> getAchievements() {
-        return achievements;
+        return new ArrayList<>(achievements);
     }
 
     public boolean isVerified() {
@@ -33,12 +31,20 @@ public class CreatorUser extends User {
     }
 
     @Override
-    public String getDisplaySummary() {
-        return "Creator: " + getName() + " (" + getUsername() + ") | Talents: " + String.join(", ", talents);
+    public String getUserType() {
+        return "Creator";
     }
 
     @Override
-    public String getUserType() {
-        return "Creator";
+    public String getDisplaySummary() {
+        return "Creator: " + getName() + " (" + getUsername() + ") | Talents: " + String.join(", ", getTalents());
+    }
+
+    @Override
+    public Map<String, Object> toJson() {
+        Map<String, Object> json = super.toJson();
+        json.put("verified", verified);
+        json.put("achievements", getAchievements());
+        return json;
     }
 }

@@ -1,137 +1,164 @@
 package com.kinship.app.mysql;
 
-import com.kinship.app.interfaces.IRepository;
-import com.kinship.app.models.EventOpportunity;
-import com.kinship.app.models.Opportunity;
 import com.kinship.app.exceptions.DatabaseException;
-import com.kinship.app.exceptions.GlobalExceptionHandler;
+import com.kinship.app.interfaces.IRepository;
+import com.kinship.app.models.Opportunity;
+import com.kinship.app.models.OpportunityFactory;
+import com.kinship.app.util.TextUtil;
 
-import java.sql.*;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.SQLIntegrityConstraintViolationException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
-public class MysqlOpportunityRepository implements IRepository<Opportunity, Long> {
-    private final MysqlDatabaseManager dbManager;
+/**
+ * JDBC repository for opportunities and applications.
+ */
+public class MysqlOpportunityRepository extends BaseMysqlRepository implements IRepository<Opportunity, Long> {
 
-    public MysqlOpportunityRepository() {
-        this.dbManager = MysqlDatabaseManager.getInstance();
+    public record ApplyResult(boolean newlyApplied, int applicants) {}
+
+    private static final String SELECT_OPPS = "SELECT o.*, EXISTS(SELECT 1 FROM applications a "
+            + "WHERE a.opportunity_id = o.id AND a.user_id = ?) AS applied_by_viewer FROM opportunities o";
+
+    private Opportunity map(ResultSet rs) throws SQLException {
+        Opportunity o = OpportunityFactory.create(
+                rs.getString("type"), rs.getLong("id"), rs.getString("title"), rs.getString("category"),
+                rs.getString("organizer"), rs.getString("location"), rs.getString("event_date"),
+                rs.getString("compensation"), rs.getString("deadline"), rs.getString("description"),
+                rs.getString("image"), TextUtil.splitList(rs.getString("talents")), rs.getInt("applicants"),
+                rs.getBoolean("featured"), toLocal(rs.getTimestamp("created_at")));
+        o.setAppliedByViewer(rs.getBoolean("applied_by_viewer"));
+        return o;
     }
 
     @Override
-    public Opportunity save(Opportunity opp) {
-        String sql = "REPLACE INTO opportunities (id, title, type, category, location, date, description, image, applicants) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        try (Connection conn = dbManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-            stmt.setLong(1, opp.getId());
-            stmt.setString(2, opp.getTitle());
-            stmt.setString(3, opp.getType());
-            stmt.setString(4, opp.getCategory());
-            stmt.setString(5, opp.getLocation());
-            stmt.setString(6, opp.getDate());
-            stmt.setString(7, opp.getDescription());
-            stmt.setString(8, opp.getImage());
-            stmt.setInt(9, opp.getApplicants());
-
-            stmt.executeUpdate();
-            return opp;
-        } catch (SQLException e) {
-            GlobalExceptionHandler.getInstance().handleException(new DatabaseException("MySQL Opportunity save failed", e));
-            return null;
+    public Opportunity save(Opportunity opp) throws DatabaseException {
+        if (opp.getId() != 0) {
+            throw new DatabaseException("Opportunities are immutable once published");
         }
+        String sql = "INSERT INTO opportunities (title, type, category, organizer, location, event_date, compensation, "
+                + "deadline, description, image, talents, featured, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        long id = db.execute("Insert opportunity", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+                ps.setString(1, opp.getTitle());
+                ps.setString(2, opp.getType());
+                ps.setString(3, opp.getCategory());
+                ps.setString(4, opp.getOrganizer());
+                ps.setString(5, opp.getLocation());
+                ps.setString(6, opp.getDate());
+                ps.setString(7, opp.getCompensation());
+                ps.setString(8, opp.getDeadline());
+                ps.setString(9, opp.getDescription());
+                ps.setString(10, opp.getImage());
+                ps.setString(11, TextUtil.joinList(opp.getTalents()));
+                ps.setBoolean(12, opp.isFeatured());
+                ps.setTimestamp(13, nowTimestamp());
+                ps.executeUpdate();
+                return generatedKey(ps);
+            }
+        });
+        opp.assignId(id);
+        return opp;
     }
 
     @Override
-    public Opportunity findById(Long id) {
-        String sql = "SELECT * FROM opportunities WHERE id = ?";
-        try (Connection conn = dbManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+    public Optional<Opportunity> findById(Long id) throws DatabaseException {
+        return findById(id, 0);
+    }
 
-            stmt.setLong(1, id);
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return mapRowToOpportunity(rs);
+    public Optional<Opportunity> findById(long id, long viewerId) throws DatabaseException {
+        return db.execute("Find opportunity", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(SELECT_OPPS + " WHERE o.id = ?")) {
+                ps.setLong(1, viewerId);
+                ps.setLong(2, id);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next() ? Optional.of(map(rs)) : Optional.empty();
                 }
             }
-        } catch (Exception e) {
-            GlobalExceptionHandler.getInstance().handleException(new DatabaseException("MySQL Opportunity findById failed", null));
-        }
-        return null;
+        });
     }
 
     @Override
-    public List<Opportunity> findAll() {
-        List<Opportunity> list = new ArrayList<>();
-        String sql = "SELECT * FROM opportunities ORDER BY applicants DESC";
-        try (Connection conn = dbManager.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
+    public List<Opportunity> findAll() throws DatabaseException {
+        return findAll(0, null);
+    }
 
-            while (rs.next()) {
-                Opportunity o = mapRowToOpportunity(rs);
-                if (o != null) list.add(o);
+    /** All opportunities, optionally only one type (Event, Gig, Collab, Competition, Workshop). */
+    public List<Opportunity> findAll(long viewerId, String type) throws DatabaseException {
+        boolean filter = !TextUtil.isBlank(type) && !"all".equalsIgnoreCase(type);
+        String sql = SELECT_OPPS + (filter ? " WHERE LOWER(o.type) = LOWER(?)" : "")
+                + " ORDER BY o.featured DESC, o.applicants DESC";
+        return db.execute("Load opportunities", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, viewerId);
+                if (filter) {
+                    ps.setString(2, type);
+                }
+                List<Opportunity> list = new ArrayList<>();
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        list.add(map(rs));
+                    }
+                }
+                return list;
             }
-        } catch (Exception e) {
-            GlobalExceptionHandler.getInstance().handleException(new DatabaseException("MySQL Opportunity findAll failed", null));
-        }
-        return list;
+        });
     }
 
     @Override
-    public boolean deleteById(Long id) {
-        String sql = "DELETE FROM opportunities WHERE id = ?";
-        try (Connection conn = dbManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setLong(1, id);
-            return stmt.executeUpdate() > 0;
-        } catch (SQLException e) {
-            GlobalExceptionHandler.getInstance().handleException(new DatabaseException("MySQL Opportunity delete failed", e));
-            return false;
-        }
+    public boolean deleteById(Long id) throws DatabaseException {
+        return db.execute("Delete opportunity", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement("DELETE FROM opportunities WHERE id = ?")) {
+                ps.setLong(1, id);
+                return ps.executeUpdate() > 0;
+            }
+        });
     }
 
     @Override
-    public int count() {
-        String sql = "SELECT COUNT(*) FROM opportunities";
-        try (Connection conn = dbManager.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-            if (rs.next()) return rs.getInt(1);
-        } catch (SQLException e) {
-            GlobalExceptionHandler.getInstance().handleException(new DatabaseException("MySQL count failed", e));
-        }
-        return 0;
+    public int count() throws DatabaseException {
+        return db.execute("Count opportunities", conn -> {
+            try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM opportunities")) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        });
     }
 
-    public boolean applyToOpportunity(Long id) {
-        String sql = "UPDATE opportunities SET applicants = applicants + 1 WHERE id = ?";
-        try (Connection conn = dbManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setLong(1, id);
-            return stmt.executeUpdate() > 0;
-        } catch (SQLException e) {
-            GlobalExceptionHandler.getInstance().handleException(new DatabaseException("MySQL apply failed", e));
-            return false;
-        }
-    }
-
-    private Opportunity mapRowToOpportunity(ResultSet rs) throws SQLException {
-        long id = rs.getLong("id");
-        String title = rs.getString("title");
-        String type = rs.getString("type");
-        String category = rs.getString("category");
-        String location = rs.getString("location");
-        String date = rs.getString("date");
-        String description = rs.getString("description");
-        String image = rs.getString("image");
-        int applicants = rs.getInt("applicants");
-
-        if ("Event".equalsIgnoreCase(type)) {
-            return new EventOpportunity(id, title, category, location, date, description, image, applicants);
-        } else if ("Gig".equalsIgnoreCase(type)) {
-            return new EventOpportunity(id, title, category, location, date, description, image, applicants);
-        } else {
-            return new EventOpportunity(id, title, category, location, date, description, image, applicants);
-        }
+    /**
+     * Records an application. The (user, opportunity) primary key makes a second application fail with
+     * {@link SQLIntegrityConstraintViolationException}, which is caught and reported as "already applied".
+     */
+    public ApplyResult apply(long userId, long opportunityId) throws DatabaseException {
+        return db.inTransaction("Apply to opportunity", conn -> {
+            boolean inserted;
+            try (PreparedStatement ins = conn.prepareStatement(
+                    "INSERT INTO applications (user_id, opportunity_id, created_at) VALUES (?, ?, ?)")) {
+                ins.setLong(1, userId);
+                ins.setLong(2, opportunityId);
+                ins.setTimestamp(3, nowTimestamp());
+                ins.executeUpdate();
+                inserted = true;
+            } catch (SQLIntegrityConstraintViolationException duplicate) {
+                inserted = false;
+            }
+            if (inserted) {
+                try (PreparedStatement upd = conn.prepareStatement(
+                        "UPDATE opportunities SET applicants = applicants + 1 WHERE id = ?")) {
+                    upd.setLong(1, opportunityId);
+                    upd.executeUpdate();
+                }
+            }
+            try (PreparedStatement ps = conn.prepareStatement("SELECT applicants FROM opportunities WHERE id = ?")) {
+                ps.setLong(1, opportunityId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return new ApplyResult(inserted, rs.next() ? rs.getInt(1) : 0);
+                }
+            }
+        });
     }
 }

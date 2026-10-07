@@ -1,23 +1,29 @@
 package com.kinship.app.models;
 
+import java.time.LocalDateTime;
+import java.util.Map;
+
+/**
+ * OOP: ABSTRACTION. Concrete post types decide their type name and badge (polymorphism).
+ */
 public abstract class Post extends AbstractEntity {
     private final User creator;
     private final String content;
     private final String mediaUrl;
-    private int likes;
-    private int comments;
-    private int shares;
-    private final String timestamp;
+    private final int likes;
+    private final int comments;
+    private final int shares;
+    private boolean likedByViewer;
 
-    public Post(long id, User creator, String content, String mediaUrl, int likes, int comments, int shares, String timestamp) {
-        super(id);
+    protected Post(long id, User creator, String content, String mediaUrl, int likes, int comments, int shares,
+                   LocalDateTime createdAt) {
+        super(id, createdAt);
         this.creator = creator;
         this.content = content;
         this.mediaUrl = mediaUrl;
         this.likes = likes;
         this.comments = comments;
         this.shares = shares;
-        this.timestamp = timestamp;
     }
 
     public User getCreator() { return creator; }
@@ -26,13 +32,31 @@ public abstract class Post extends AbstractEntity {
     public int getLikes() { return likes; }
     public int getComments() { return comments; }
     public int getShares() { return shares; }
-    public String getTimestamp() { return timestamp; }
-
-    public void likePost() {
-        this.likes++;
-        markUpdated();
-    }
+    public boolean isLikedByViewer() { return likedByViewer; }
+    public void setLikedByViewer(boolean likedByViewer) { this.likedByViewer = likedByViewer; }
 
     public abstract String getPostType();
+
     public abstract String renderBadgeLabel();
+
+    @Override
+    public String getDisplaySummary() {
+        return "[" + getPostType() + " post #" + getId() + "] by " + creator.getName() + ": \"" + content + "\"";
+    }
+
+    @Override
+    public Map<String, Object> toJson() {
+        Map<String, Object> json = super.toJson();
+        json.put("type", getPostType());
+        json.put("badge", renderBadgeLabel());
+        json.put("content", content);
+        json.put("caption", content);
+        json.put("media", mediaUrl);
+        json.put("likes", likes);
+        json.put("comments", comments);
+        json.put("shares", shares);
+        json.put("liked", likedByViewer);
+        json.put("creator", creator.toJson());
+        return json;
+    }
 }

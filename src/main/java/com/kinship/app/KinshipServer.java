@@ -1,271 +1,155 @@
 package com.kinship.app;
 
-import com.kinship.app.db.DatabaseManager;
-import com.kinship.app.models.CreatorUser;
-import com.kinship.app.models.ImagePost;
-import com.kinship.app.models.Opportunity;
-import com.kinship.app.models.Post;
+import com.kinship.app.controllers.AuthController;
+import com.kinship.app.controllers.CollaborationController;
+import com.kinship.app.controllers.CreatorController;
+import com.kinship.app.controllers.FeedController;
+import com.kinship.app.controllers.MessageController;
+import com.kinship.app.controllers.NotificationController;
+import com.kinship.app.controllers.OpportunityController;
+import com.kinship.app.controllers.SystemController;
+import com.kinship.app.exceptions.DatabaseException;
+import com.kinship.app.http.ApiServer;
+import com.kinship.app.http.Router;
+import com.kinship.app.interfaces.Controller;
+import com.kinship.app.mysql.MysqlCollaborationRepository;
+import com.kinship.app.mysql.MysqlDatabaseManager;
+import com.kinship.app.mysql.MysqlMessageRepository;
+import com.kinship.app.mysql.MysqlNotificationRepository;
 import com.kinship.app.mysql.MysqlOpportunityRepository;
 import com.kinship.app.mysql.MysqlPostRepository;
+import com.kinship.app.mysql.MysqlSessionRepository;
 import com.kinship.app.mysql.MysqlUserRepository;
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpHandler;
+import com.kinship.app.services.AuthService;
+import com.kinship.app.services.BackgroundScheduler;
+import com.kinship.app.services.NotificationService;
+import com.kinship.app.services.TalentMatchingService;
 import com.sun.net.httpserver.HttpServer;
 
 import java.io.IOException;
-import java.io.OutputStream;
 import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Java Backend REST HTTP Server with JDBC Connectivity and ThreadPool
+ * Entry point: wires the MySQL repositories, services and controllers together and starts
+ * a multithreaded HTTP server on port 8080 (override with KINSHIP_PORT).
+ *
+ * <pre>
+ *   Threads at runtime
+ *   kinship-http-N              handle HTTP requests (fixed ThreadPoolExecutor)
+ *   kinship-worker-N            parallel talent matching + stats queries
+ *   kinship-notification-worker writes notifications from a BlockingQueue
+ *   kinship-scheduler-N         periodic trending refresh / session cleanup
+ * </pre>
  */
 public class KinshipServer {
-    private static final int PORT = 8080;
+    private static final int HTTP_THREADS = 10;
 
-    private final MysqlUserRepository userRepo;
-    private final MysqlPostRepository postRepo;
-    private final MysqlOpportunityRepository oppRepo;
+    private final int port;
+    private HttpServer httpServer;
+    private ThreadPoolExecutor httpPool;
+    private ExecutorService workerPool;
+    private NotificationService notificationService;
+    private BackgroundScheduler scheduler;
 
-    public KinshipServer() {
-        this.userRepo = new MysqlUserRepository();
-        this.postRepo = new MysqlPostRepository();
-        this.oppRepo = new MysqlOpportunityRepository();
+    public KinshipServer(int port) {
+        this.port = port;
     }
 
-    public void start() throws IOException {
-        HttpServer server = HttpServer.create(new InetSocketAddress(PORT), 0);
+    private static ThreadFactory namedThreads(String prefix, boolean daemon) {
+        AtomicInteger counter = new AtomicInteger();
+        return r -> {
+            Thread t = new Thread(r, prefix + counter.incrementAndGet());
+            t.setDaemon(daemon);
+            return t;
+        };
+    }
 
-        // API Endpoints
-        server.createContext("/api/feed", new FeedHandler());
-        server.createContext("/api/feed/create", new CreatePostHandler());
-        server.createContext("/api/feed/like", new LikePostHandler());
-        server.createContext("/api/creators", new CreatorsHandler());
-        server.createContext("/api/creators/update", new UpdateProfileHandler());
-        server.createContext("/api/creators/follow", new FollowUserHandler());
-        server.createContext("/api/opportunities", new OpportunitiesHandler());
-        server.createContext("/api/opportunities/apply", new ApplyOpportunityHandler());
-        server.createContext("/api/system/oop-metrics", new SystemMetricsHandler());
+    public void start() throws IOException, DatabaseException {
+        MysqlDatabaseManager.getInstance().initialize();
 
-        // Java Multithreaded Executor Pool for HTTP Requests
-        server.setExecutor(Executors.newFixedThreadPool(10));
-        server.start();
+        // repositories (JDBC)
+        MysqlUserRepository users = new MysqlUserRepository();
+        MysqlPostRepository posts = new MysqlPostRepository();
+        MysqlOpportunityRepository opportunities = new MysqlOpportunityRepository();
+        MysqlNotificationRepository notificationRepo = new MysqlNotificationRepository();
+        MysqlMessageRepository messages = new MysqlMessageRepository();
+        MysqlCollaborationRepository collaborations = new MysqlCollaborationRepository();
+        MysqlSessionRepository sessions = new MysqlSessionRepository();
+
+        // services (multithreading)
+        httpPool = new ThreadPoolExecutor(HTTP_THREADS, HTTP_THREADS, 0L, TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<>(), namedThreads("kinship-http-", false));
+        workerPool = Executors.newFixedThreadPool(Math.max(2, Runtime.getRuntime().availableProcessors()),
+                namedThreads("kinship-worker-", true));
+        notificationService = new NotificationService(notificationRepo);
+        AuthService auth = new AuthService(users, sessions, notificationService);
+        scheduler = new BackgroundScheduler(users, auth);
+        TalentMatchingService matcher = new TalentMatchingService(workerPool);
+
+        // controllers (REST endpoints)
+        Router router = new Router();
+        List<Controller> controllers = List.of(
+                new AuthController(users, auth, notificationRepo, messages),
+                new CreatorController(users, posts, notificationService, matcher, scheduler),
+                new FeedController(users, posts, notificationService),
+                new OpportunityController(users, opportunities, notificationService),
+                new NotificationController(users, notificationRepo),
+                new MessageController(users, messages, notificationService),
+                new CollaborationController(users, collaborations, notificationService),
+                new SystemController(users, posts, opportunities, notificationService, scheduler, auth, httpPool,
+                        workerPool, router));
+        controllers.forEach(c -> c.registerRoutes(router));
+
+        notificationService.start();
+        scheduler.start();
+
+        httpServer = HttpServer.create(new InetSocketAddress(port), 0);
+        httpServer.createContext("/api", new ApiServer(router, auth));
+        httpServer.setExecutor(httpPool);
+        httpServer.start();
 
         System.out.println("=================================================");
-        System.out.println("🚀 Kinship Java JDBC Backend Server Started!");
-        System.out.println("🌐 URL: http://localhost:" + PORT + "/api/feed");
-        System.out.println("💾 JDBC DB: Connected & Initialized");
+        System.out.println(" Kinship Java backend running on http://localhost:" + port + "/api");
+        System.out.println(" " + router.size() + " endpoints, " + HTTP_THREADS + " HTTP worker threads");
+        System.out.println(" Health: http://localhost:" + port + "/api/system/health");
         System.out.println("=================================================");
+    }
+
+    /** Graceful shutdown: stop accepting requests, drain queues, stop all thread pools. */
+    public void stop() {
+        System.out.println("[KinshipServer] Shutting down...");
+        if (httpServer != null) httpServer.stop(1);
+        if (httpPool != null) httpPool.shutdown();
+        if (scheduler != null) scheduler.close();
+        if (notificationService != null) notificationService.close();
+        if (workerPool != null) workerPool.shutdownNow();
+        System.out.println("[KinshipServer] Stopped.");
     }
 
     public static void main(String[] args) {
+        int port = Integer.parseInt(System.getenv().getOrDefault("KINSHIP_PORT", "8080"));
+        KinshipServer server = new KinshipServer(port);
         try {
-            KinshipServer kinshipServer = new KinshipServer();
-            kinshipServer.start();
-        } catch (Exception e) {
-            System.err.println("Failed to start Kinship Java Backend Server: " + e.getMessage());
-            e.printStackTrace();
+            server.start();
+            Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "kinship-shutdown"));
+        } catch (DatabaseException e) {
+            System.err.println();
+            System.err.println("Could not start: " + e.getMessage());
+            System.err.println("Fix: start MySQL and put your credentials in db.properties (see db.properties.example).");
+            server.stop();
+            System.exit(1);
+        } catch (IOException e) {
+            System.err.println("Could not open port " + port + ": " + e.getMessage());
+            server.stop();
+            System.exit(1);
         }
-    }
-
-    // Helper for CORS & JSON Responses
-    private static void sendJsonResponse(HttpExchange exchange, int statusCode, String jsonResponse) throws IOException {
-        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=UTF-8");
-        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
-        exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        exchange.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-
-        if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
-            exchange.sendResponseHeaders(204, -1);
-            return;
-        }
-
-        byte[] bytes = jsonResponse.getBytes(StandardCharsets.UTF_8);
-        exchange.sendResponseHeaders(statusCode, bytes.length);
-        try (OutputStream os = exchange.getResponseBody()) {
-            os.write(bytes);
-        }
-    }
-
-    private class FeedHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            List<Post> posts = postRepo.findAll();
-            StringBuilder sb = new StringBuilder("[");
-            for (int i = 0; i < posts.size(); i++) {
-                Post p = posts.get(i);
-                sb.append(String.format("{\"id\":%d,\"creator\":{\"id\":%d,\"name\":\"%s\",\"image\":\"%s\",\"talents\":[%s],\"verified\":true},\"type\":\"%s\",\"content\":\"%s\",\"media\":\"%s\",\"caption\":\"%s\",\"likes\":%d,\"comments\":%d,\"shares\":%d,\"timestamp\":\"%s\",\"badge\":\"%s\"}",
-                        p.getId(), p.getCreator().getId(), escape(p.getCreator().getName()), escape(p.getCreator().getImage()),
-                        formatTalentsJson(p.getCreator().getTalents()), p.getPostType(),
-                        escape(p.getContent()), escape(p.getMediaUrl()), escape(p.getContent()),
-                        p.getLikes(), p.getComments(), p.getShares(), escape(p.getTimestamp()), escape(p.renderBadgeLabel())));
-                if (i < posts.size() - 1) sb.append(",");
-            }
-            sb.append("]");
-            sendJsonResponse(exchange, 200, sb.toString());
-        }
-    }
-
-    private class CreatePostHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                List<CreatorUser> creators = userRepo.findAll();
-                CreatorUser creator = creators.isEmpty() ? null : creators.get(0);
-                long newId = System.currentTimeMillis();
-                Post post = new ImagePost(newId, creator, "Created via Kinship Java JDBC Backend", "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800", 0, 0, 0, "Just now");
-                postRepo.save(post);
-                sendJsonResponse(exchange, 201, "{\"status\":\"success\",\"message\":\"Post created in Java JDBC database\"}");
-            } else {
-                sendJsonResponse(exchange, 405, "{\"error\":\"Method Not Allowed\"}");
-            }
-        }
-    }
-
-    private class LikePostHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                // Parse POST ID
-                try {
-                    String query = exchange.getRequestURI().getQuery();
-                    if (query != null && query.contains("id=")) {
-                        long postId = Long.parseLong(query.split("id=")[1]);
-                        postRepo.incrementLike(postId);
-                        sendJsonResponse(exchange, 200, "{\"status\":\"success\",\"message\":\"Post liked\"}");
-                        return;
-                    }
-                } catch (Exception ignored) {}
-            }
-            sendJsonResponse(exchange, 400, "{\"error\":\"Bad Request\"}");
-        }
-    }
-
-    private class CreatorsHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            List<CreatorUser> creators = userRepo.findAll();
-            StringBuilder sb = new StringBuilder("[");
-            for (int i = 0; i < creators.size(); i++) {
-                CreatorUser c = creators.get(i);
-                sb.append(String.format("{\"id\":%d,\"name\":\"%s\",\"username\":\"%s\",\"bio\":\"%s\",\"image\":\"%s\",\"location\":\"%s\",\"followers\":%d,\"following\":%d,\"verified\":%b}",
-                        c.getId(), escape(c.getName()), escape(c.getUsername()), escape(c.getBio()), escape(c.getImage()), escape(c.getLocation()), c.getFollowers(), c.getFollowing(), c.isVerified()));
-                if (i < creators.size() - 1) sb.append(",");
-            }
-            sb.append("]");
-            sendJsonResponse(exchange, 200, sb.toString());
-        }
-    }
-
-    private class UpdateProfileHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                try {
-                    String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-                    // Extract fields manually since we aren't using a JSON parser library
-                    String name = extractJsonField(body, "name");
-                    String bio = extractJsonField(body, "bio");
-                    long id = Long.parseLong(extractJsonField(body, "id"));
-                    
-                    CreatorUser user = userRepo.findById(id);
-                    if (user != null) {
-                        user.setName(name != null ? name : user.getName());
-                        user.setBio(bio != null ? bio : user.getBio());
-                        userRepo.save(user);
-                        sendJsonResponse(exchange, 200, "{\"status\":\"success\"}");
-                        return;
-                    }
-                } catch (Exception ignored) { }
-            }
-            sendJsonResponse(exchange, 400, "{\"error\":\"Bad Request\"}");
-        }
-    }
-
-    private class FollowUserHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                try {
-                    String query = exchange.getRequestURI().getQuery();
-                    if (query != null && query.contains("id=")) {
-                        long followedId = Long.parseLong(query.split("id=")[1]);
-                        // Hardcode follower as user 1 for demo purposes
-                        userRepo.followUser(1L, followedId);
-                        sendJsonResponse(exchange, 200, "{\"status\":\"success\"}");
-                        return;
-                    }
-                } catch (Exception ignored) {}
-            }
-            sendJsonResponse(exchange, 400, "{\"error\":\"Bad Request\"}");
-        }
-    }
-
-    private static String extractJsonField(String json, String field) {
-        String key = "\"" + field + "\":\"";
-        int idx = json.indexOf(key);
-        if (idx == -1) {
-            key = "\"" + field + "\":";
-            idx = json.indexOf(key);
-            if (idx == -1) return null;
-            int end = json.indexOf(",", idx);
-            if (end == -1) end = json.indexOf("}", idx);
-            return json.substring(idx + key.length(), end).trim();
-        }
-        int end = json.indexOf("\"", idx + key.length());
-        if (end != -1) {
-            return json.substring(idx + key.length(), end);
-        }
-        return null;
-    }
-
-    private class OpportunitiesHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            List<Opportunity> opps = oppRepo.findAll();
-            StringBuilder sb = new StringBuilder("[");
-            for (int i = 0; i < opps.size(); i++) {
-                Opportunity o = opps.get(i);
-                sb.append(String.format("{\"id\":%d,\"title\":\"%s\",\"type\":\"%s\",\"category\":\"%s\",\"location\":\"%s\",\"date\":\"%s\",\"description\":\"%s\",\"image\":\"%s\",\"applicants\":%d}",
-                        o.getId(), escape(o.getTitle()), escape(o.getType()), escape(o.getCategory()), escape(o.getLocation()), escape(o.getDate()), escape(o.getDescription()), escape(o.getImage()), o.getApplicants()));
-                if (i < opps.size() - 1) sb.append(",");
-            }
-            sb.append("]");
-            sendJsonResponse(exchange, 200, sb.toString());
-        }
-    }
-
-    private class ApplyOpportunityHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            oppRepo.applyToOpportunity(1L);
-            sendJsonResponse(exchange, 200, "{\"status\":\"success\",\"message\":\"Application recorded in JDBC database\"}");
-        }
-    }
-
-    private class SystemMetricsHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            String json = String.format("{\"server\":\"Kinship Java HTTP Server v1.0\",\"jdbc\":\"Active MySQL Database\",\"userCount\":%d,\"postCount\":%d,\"opportunityCount\":%d}",
-                    userRepo.count(), postRepo.count(), oppRepo.count());
-            sendJsonResponse(exchange, 200, json);
-        }
-    }
-
-    private static String escape(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ").replace("\r", "");
-    }
-
-    private static String formatTalentsJson(List<String> talents) {
-        if (talents == null || talents.isEmpty()) return "";
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < talents.size(); i++) {
-            sb.append("\"").append(escape(talents.get(i))).append("\"");
-            if (i < talents.size() - 1) sb.append(",");
-        }
-        return sb.toString();
     }
 }

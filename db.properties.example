@@ -1,0 +1,5 @@
+# Copy this file to db.properties (it is git-ignored) and put your MySQL credentials in it.
+# Environment variables KINSHIP_DB_URL / KINSHIP_DB_USER / KINSHIP_DB_PASSWORD override these values.
+db.url=jdbc:mysql://localhost:3306/kinshipdb?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8
+db.user=root
+db.password=your_mysql_password

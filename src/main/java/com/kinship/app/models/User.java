@@ -1,83 +1,113 @@
 package com.kinship.app.models;
 
+import com.kinship.app.exceptions.ValidationException;
 import com.kinship.app.interfaces.INotifiable;
 import com.kinship.app.interfaces.ITalentSearchable;
-import com.kinship.app.exceptions.ValidationException;
 
-import java.util.Collections;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
- * OOP Concept: ABSTRACTION, INHERITANCE, ENCAPSULATION, INTERFACES
+ * OOP: ABSTRACTION, INHERITANCE, ENCAPSULATION, INTERFACES.
+ * Validates its own state in the constructor and setters (throws {@link ValidationException}).
  */
 public abstract class User extends AbstractEntity implements ITalentSearchable, INotifiable {
+    private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
     private String name;
-    private String username;
+    private final String username;
+    private final String email;
     private String bio;
     private String image;
     private String location;
     private int followers;
     private int following;
-    private int unreadNotifications;
+    private List<String> talents;
 
-    public User(long id, String name, String username, String bio, String image, String location, int followers, int following) throws ValidationException {
-        super(id);
-        if (name == null || name.trim().isEmpty()) {
-            throw new ValidationException("Name cannot be empty", Collections.singletonList("Name field required"));
+    protected User(long id, String name, String username, String email, String bio, String image, String location,
+                   List<String> talents, int followers, int following, LocalDateTime createdAt) throws ValidationException {
+        super(id, createdAt);
+        if (username == null || !username.matches("^@[A-Za-z0-9_.]{2,30}$")) {
+            throw new ValidationException("Username must start with '@' and contain 2-30 letters, digits, '_' or '.'");
         }
-        if (username == null || !username.startsWith("@")) {
-            throw new ValidationException("Username must start with '@'", Collections.singletonList("Invalid username format"));
+        if (email != null && !EMAIL.matcher(email).matches()) {
+            throw new ValidationException("Email address is not valid");
         }
-
-        this.name = name;
+        setName(name);
         this.username = username;
+        this.email = email;
         this.bio = bio;
         this.image = image;
         this.location = location;
         this.followers = followers;
         this.following = following;
-        this.unreadNotifications = 0;
+        this.talents = talents != null ? new ArrayList<>(talents) : new ArrayList<>();
     }
 
     public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
     public String getUsername() { return username; }
+    public String getEmail() { return email; }
     public String getBio() { return bio; }
-    public void setBio(String bio) { this.bio = bio; }
     public String getImage() { return image; }
     public String getLocation() { return location; }
     public int getFollowers() { return followers; }
     public int getFollowing() { return following; }
 
-    public void incrementFollowers() {
-        this.followers++;
-        markUpdated();
+    @Override
+    public String getDisplayName() {
+        return name;
     }
 
     @Override
-    public void receiveNotification(String message, String type) {
-        this.unreadNotifications++;
-        System.out.println("[Java Server User Notification] " + username + " received: " + message);
+    public List<String> getTalents() {
+        return new ArrayList<>(talents);
     }
 
-    @Override
-    public int getUnreadCount() {
-        return unreadNotifications;
+    public void setName(String name) throws ValidationException {
+        if (name == null || name.trim().length() < 2) {
+            throw new ValidationException("Name must be at least 2 characters");
+        }
+        if (name.length() > 100) {
+            throw new ValidationException("Name must be at most 100 characters");
+        }
+        this.name = name.trim();
     }
 
-    @Override
-    public boolean hasTalent(String talentName) {
-        return getTalents().stream().anyMatch(t -> t.equalsIgnoreCase(talentName));
+    public void setBio(String bio) throws ValidationException {
+        if (bio != null && bio.length() > 500) {
+            throw new ValidationException("Bio must be at most 500 characters");
+        }
+        this.bio = bio;
     }
 
-    @Override
-    public int getMatchScore(List<String> requiredTalents) {
-        if (requiredTalents == null || requiredTalents.isEmpty()) return 100;
-        long matches = requiredTalents.stream()
-                .filter(req -> getTalents().stream().anyMatch(t -> t.equalsIgnoreCase(req)))
-                .count();
-        return (int) Math.round(((double) matches / requiredTalents.size()) * 100);
+    public void setLocation(String location) { this.location = location; }
+    public void setImage(String image) { this.image = image; }
+
+    public void setTalents(List<String> talents) throws ValidationException {
+        if (talents == null || talents.isEmpty()) {
+            throw new ValidationException("Select at least one talent");
+        }
+        this.talents = new ArrayList<>(talents);
     }
 
+    /** Each concrete user type names itself. */
     public abstract String getUserType();
+
+    @Override
+    public Map<String, Object> toJson() {
+        Map<String, Object> json = super.toJson();
+        json.put("name", name);
+        json.put("username", username);
+        json.put("bio", bio);
+        json.put("image", image);
+        json.put("location", location);
+        json.put("followers", followers);
+        json.put("following", following);
+        json.put("talents", getTalents());
+        json.put("userType", getUserType());
+        return json;
+    }
 }

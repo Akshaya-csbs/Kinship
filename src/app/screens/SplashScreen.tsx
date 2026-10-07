@@ -2,13 +2,14 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
 import { Sparkles } from "lucide-react";
+import { api } from "../core/services/KinshipPlatformFacade";
 
 export default function SplashScreen() {
   const navigate = useNavigate();
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      navigate("/onboarding");
+      navigate(api.isLoggedIn() ? "/home" : "/onboarding");
     }, 3000);
     return () => clearTimeout(timer);
   }, [navigate]);

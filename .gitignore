@@ -31,3 +31,6 @@ target/
 *.sw?
 *.class
 *.jar
+
+# Local MySQL credentials
+db.properties
