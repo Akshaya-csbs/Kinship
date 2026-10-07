@@ -45,13 +45,13 @@ export default function AuthScreen() {
     }
   };
 
-  // Google OAuth needs a registered client id; until one is configured this signs in to the demo account.
+  // Google OAuth needs a registered client id; until one is configured this signs in to Akshaya's account.
   const handleGoogleAuth = async () => {
     setLoading(true);
     try {
-      const user = await api.login(DEMO_EMAIL, DEMO_PASSWORD);
-      toast.info("Google sign-in is not configured yet, so you are signed in with the demo account.");
-      afterSignIn(user, false);
+      const user = await api.googleSignIn();
+      toast.success("Welcome Akshaya!");
+      navigate(user.talents?.length ? "/home" : "/talents", { replace: true });
     } catch (err) {
       toast.error(errorMessage(err));
     } finally {

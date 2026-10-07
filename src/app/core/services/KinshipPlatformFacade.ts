@@ -131,6 +131,12 @@ export class KinshipPlatformFacade {
     return data.user;
   }
 
+  public async googleSignIn() {
+    const data = await this.request("POST", "/auth/google");
+    this.setSession(data.token, data.user);
+    return data.user;
+  }
+
   public async logout() {
     try {
       await this.request("POST", "/auth/logout");

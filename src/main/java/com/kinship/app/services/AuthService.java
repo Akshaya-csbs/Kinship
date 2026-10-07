@@ -71,6 +71,28 @@ public class AuthService {
         return new AuthResult(createSession(userId), user);
     }
 
+    /** Name used for "Continue with Google" (override with KINSHIP_GOOGLE_NAME). */
+    public static final String GOOGLE_NAME = System.getenv().getOrDefault("KINSHIP_GOOGLE_NAME", "Akshaya");
+    private static final String GOOGLE_EMAIL = "google." + GOOGLE_NAME.toLowerCase().replaceAll("[^a-z0-9]", "")
+            + "@kinship.app";
+
+    /**
+     * "Continue with Google". Real Google OAuth needs a registered client id, so until one is configured
+     * this always signs in to the Google account of {@link #GOOGLE_NAME}, creating it on first use.
+     */
+    public AuthResult googleSignIn() throws KinshipException {
+        Optional<MysqlUserRepository.Credentials> existing = users.findCredentialsByEmail(GOOGLE_EMAIL);
+        if (existing.isPresent()) {
+            long userId = existing.get().userId();
+            CreatorUser user = users.findById(userId).orElseThrow(() -> new EntityNotFoundException("User", userId));
+            return new AuthResult(createSession(userId), user);
+        }
+        byte[] random = new byte[24];
+        RANDOM.nextBytes(random);
+        // random password: this account is only reachable through the Google button
+        return register(GOOGLE_NAME, GOOGLE_EMAIL, Base64.getEncoder().encodeToString(random));
+    }
+
     public void logout(String token) throws DatabaseException {
         if (token != null) {
             cache.remove(token);

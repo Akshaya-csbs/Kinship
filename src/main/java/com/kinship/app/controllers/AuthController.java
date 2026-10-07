@@ -29,6 +29,7 @@ public class AuthController extends BaseController {
     public void registerRoutes(Router router) {
         router.post("/api/auth/register", this::register);
         router.post("/api/auth/login", this::login);
+        router.post("/api/auth/google", this::google);
         router.post("/api/auth/logout", this::logout);
         router.get("/api/auth/me", this::me);
     }
@@ -41,6 +42,11 @@ public class AuthController extends BaseController {
 
     private Object login(ApiRequest req) throws KinshipException {
         AuthService.AuthResult result = auth.login(req.requireString("email", 255), req.bodyString("password"));
+        return obj("token", result.token(), "user", result.user().toJson());
+    }
+
+    private Object google(ApiRequest req) throws KinshipException {
+        AuthService.AuthResult result = auth.googleSignIn();
         return obj("token", result.token(), "user", result.user().toJson());
     }
 
