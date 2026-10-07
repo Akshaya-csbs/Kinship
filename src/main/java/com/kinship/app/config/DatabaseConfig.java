@@ -2,6 +2,7 @@ package com.kinship.app.config;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
@@ -52,6 +53,25 @@ public final class DatabaseConfig {
         if (env != null && !env.isEmpty()) return env;
         if (fileValue != null) return fileValue.trim();
         return fallback;
+    }
+
+    /** Same URL, different login (used when the user types their credentials at start-up). */
+    public DatabaseConfig withCredentials(String newUser, String newPassword) {
+        return new DatabaseConfig(url, newUser, newPassword);
+    }
+
+    /** Writes these settings to db.properties so the user is not asked again next time. */
+    public void saveToFile() {
+        Properties props = new Properties();
+        props.setProperty("db.url", url);
+        props.setProperty("db.user", user);
+        props.setProperty("db.password", password);
+        try (OutputStream out = Files.newOutputStream(Path.of("db.properties"))) {
+            props.store(out, "Kinship MySQL settings (saved automatically, not committed to git)");
+            System.out.println("[DatabaseConfig] Saved credentials to " + Path.of("db.properties").toAbsolutePath());
+        } catch (IOException e) {
+            System.err.println("[DatabaseConfig] Could not save db.properties: " + e.getMessage());
+        }
     }
 
     public String getUrl() { return url; }

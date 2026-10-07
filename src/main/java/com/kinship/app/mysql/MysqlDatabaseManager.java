@@ -22,7 +22,7 @@ public final class MysqlDatabaseManager {
 
     private static volatile MysqlDatabaseManager instance;
 
-    private final DatabaseConfig config;
+    private volatile DatabaseConfig config;
     private final AtomicLong queryCount = new AtomicLong();
     private volatile String serverVersion = "unknown";
 
@@ -57,6 +57,15 @@ public final class MysqlDatabaseManager {
                     + "'. Is MySQL running and are the credentials in db.properties correct?", e);
         }
         new SchemaInitializer(this).initialize();
+    }
+
+    /** Replaces the MySQL login (before {@link #initialize()} is retried). */
+    public void useCredentials(String user, String password) {
+        this.config = config.withCredentials(user, password);
+    }
+
+    public DatabaseConfig getConfig() {
+        return config;
     }
 
     public Connection getConnection() throws SQLException {

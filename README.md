@@ -7,11 +7,16 @@
 
   ## Running the app
 
+  **Quick start (Windows):** make sure MySQL is running, then double-click `start.bat`.
+  If the backend window asks for your MySQL user and password, type them once; they are saved to `db.properties`.
+  The browser opens http://localhost:5173 when everything is ready.
+
   You need **Java 17+**, **Maven**, **MySQL 8** (or MariaDB) and **Node.js 18+**.
 
   ### 1. MySQL credentials
 
-  Copy `db.properties.example` to `db.properties` and set your MySQL user and password.
+  Copy `db.properties.example` to `db.properties` and set your MySQL user and password
+  (or just start the backend: if the login fails it asks for the user and password in the console and saves this file for you).
   `db.properties` is git-ignored, so your password is never committed.
   You can also use the environment variables `KINSHIP_DB_URL`, `KINSHIP_DB_USER` and `KINSHIP_DB_PASSWORD`.
 

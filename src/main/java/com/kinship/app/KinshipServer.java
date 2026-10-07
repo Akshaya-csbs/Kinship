@@ -137,19 +137,72 @@ public class KinshipServer {
     public static void main(String[] args) {
         int port = Integer.parseInt(System.getenv().getOrDefault("KINSHIP_PORT", "8080"));
         KinshipServer server = new KinshipServer(port);
+        boolean typedCredentials = false;
+        for (int attempt = 1; ; attempt++) {
+            try {
+                server.start();
+                if (typedCredentials) {
+                    MysqlDatabaseManager.getInstance().getConfig().saveToFile();
+                }
+                Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "kinship-shutdown"));
+                return;
+            } catch (DatabaseException e) {
+                System.err.println();
+                System.err.println("Could not start: " + e.getMessage());
+                if (isAccessDenied(e) && attempt <= 3 && askForCredentials()) {
+                    typedCredentials = true;
+                    continue; // retry with the credentials the user just typed
+                }
+                if (!isAccessDenied(e)) {
+                    System.err.println("Fix: make sure the MySQL server is running "
+                            + "(Windows: open 'Services' and start 'MySQL80').");
+                }
+                server.stop();
+                System.exit(1);
+            } catch (IOException e) {
+                System.err.println("Could not open port " + port + " (is the backend already running in another window?): "
+                        + e.getMessage());
+                server.stop();
+                System.exit(1);
+            }
+        }
+    }
+
+    /** MySQL error 1045 / SQLState 28000: wrong user name or password. */
+    private static boolean isAccessDenied(DatabaseException e) {
+        return e.getCause() instanceof java.sql.SQLException sql
+                && ("28000".equals(sql.getSQLState()) || sql.getErrorCode() == 1045);
+    }
+
+    /** One shared reader: a new reader per prompt would swallow lines buffered for the next prompt. */
+    private static final java.io.BufferedReader STDIN = new java.io.BufferedReader(new java.io.InputStreamReader(System.in));
+
+    /** Asks for the MySQL login in the console; returns false if nothing can be read. */
+    private static boolean askForCredentials() {
+        java.io.Console console = System.console();
+        java.io.BufferedReader in = STDIN;
         try {
-            server.start();
-            Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "kinship-shutdown"));
-        } catch (DatabaseException e) {
-            System.err.println();
-            System.err.println("Could not start: " + e.getMessage());
-            System.err.println("Fix: start MySQL and put your credentials in db.properties (see db.properties.example).");
-            server.stop();
-            System.exit(1);
+            System.out.println();
+            System.out.println("MySQL rejected the login. Enter the MySQL user and password you use in MySQL Workbench.");
+            System.out.print("MySQL user [root]: ");
+            System.out.flush();
+            String user = in.readLine();
+            if (user == null) return false;
+            user = user.isBlank() ? "root" : user.trim();
+            String password;
+            if (console != null) {
+                char[] chars = console.readPassword("MySQL password: ");
+                password = chars == null ? "" : new String(chars);
+            } else {
+                System.out.print("MySQL password: ");
+                System.out.flush();
+                password = in.readLine();
+                if (password == null) return false;
+            }
+            MysqlDatabaseManager.getInstance().useCredentials(user, password);
+            return true;
         } catch (IOException e) {
-            System.err.println("Could not open port " + port + ": " + e.getMessage());
-            server.stop();
-            System.exit(1);
+            return false;
         }
     }
 }
