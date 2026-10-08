@@ -12,6 +12,9 @@ export class ApiError extends Error {
   }
 }
 
+const BACKEND_DOWN =
+  "The Java server is not running. Start it in the Kinship folder with: mvn compile exec:java (or run-kinship.bat)";
+
 export const UNAUTHORIZED_EVENT = "kinship:unauthorized";
 export const SESSION_EVENT = "kinship:session";
 
@@ -91,7 +94,7 @@ export class KinshipPlatformFacade {
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });
     } catch {
-      throw new ApiError(0, "Cannot reach the Java backend. Start it with: mvn compile exec:java");
+      throw new ApiError(0, BACKEND_DOWN);
     }
 
     let data: any = null;
@@ -109,8 +112,10 @@ export class KinshipPlatformFacade {
         this.clearSession();
         window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
       }
-      if (res.status >= 502 && data === null) {
-        throw new ApiError(res.status, "Cannot reach the Java backend. Start it with: mvn compile exec:java");
+      // the Java backend always answers with a JSON error; an empty 500/502/503/504 comes from the
+      // dev-server proxy (or a load balancer) when the backend is not running
+      if (res.status >= 500 && data === null) {
+        throw new ApiError(res.status, BACKEND_DOWN);
       }
       if (data?.code === "ERR_NOT_FOUND" && path.startsWith("/")) {
         // the website is newer than the Java server that is running
